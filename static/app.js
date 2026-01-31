@@ -227,38 +227,41 @@ async function handleRouting() {
     const uploader = params.get('uploader');
     const v = params.get('v');
     const p = params.get('p');
+    const pl = params.get('pl');
+    const full = params.get('full');
 
     if (v) {
-        playVideo({ id: v, title: "Loading...", thumbnail: "" }, false);
-        const $player = $('#videoPlayer');
-        $player.one('loadedmetadata', () => {
-            $player[0].play().catch(() => {
-                const $overlay = $('<div id="autoplayFix"></div>').appendTo('#playerContainer');
-                $overlay.one('click', () => {
-                    $player[0].play();
-                    $overlay.remove();
-                });
-            });
-        });
+        await playVideo({ id: v, title: "Loading...", thumbnail: "" }, false);
     }
 
     if (q) {
         $('#videoQuery').val(q);
-        searchVideos(q, uploader, false);
+        await searchVideos(q, uploader, false);
     } else if (page === 'playlist' && p) {
-        showSection('playlist', null, false);
-        showPlaylistDetail(p, false);
+        await showSection('playlist', null, false);
+        await showPlaylistDetail(p, false);
     } else if (page) {
-        showSection(page, null, false);
+        await showSection(page, null, false);
     } else if (!v) {
-        showSection('home', null, false);
+        await showSection('home', null, false);
+    }
+
+    // Handle extra states from URL
+    if (pl === 'open') {
+        renderPlaylist();
+        $('#playlistView').show();
+        $('#playlistBtn').addClass('text-blue-500');
+    }
+    if (full === 'true' && !isExpanded) {
+        toggleExpand();
     }
 }
+
 
 window.addEventListener('popstate', handleRouting);
 
 // --- Sections ---
-function showSection(sectionId, element, updateUrl = true) {
+async function showSection(sectionId, element, updateUrl = true) {
     activeSection = sectionId;
     $('.sidebar-item').removeClass('active');
 
@@ -268,9 +271,9 @@ function showSection(sectionId, element, updateUrl = true) {
     $('#homeSection, #historySection, #offlineSection, #playlistSection').addClass('hidden-section');
     $(`#${sectionId}Section`).removeClass('hidden-section');
 
-    if (sectionId === 'history') loadHistory();
-    if (sectionId === 'offline') loadOffline();
-    if (sectionId === 'playlist') loadPlaylists();
+    if (sectionId === 'history') await loadHistory();
+    if (sectionId === 'offline') await loadOffline();
+    if (sectionId === 'playlist') await loadPlaylists();
 
     if (updateUrl) {
         const url = new URL(window.location);
@@ -521,6 +524,15 @@ function toggleExpand() {
         $icon.attr('class', 'fas fa-expand-alt');
         $('body').css('overflow', 'auto');
     }
+
+    // Sync URL
+    const url = new URL(window.location);
+    if (isExpanded) {
+        url.searchParams.set('full', 'true');
+    } else {
+        url.searchParams.delete('full');
+    }
+    window.history.replaceState({}, '', url);
 }
 
 function closePlayer() {
@@ -606,6 +618,7 @@ async function deleteOfflineItem(event, videoId) {
 // --- Playlists ---
 function updatePlaylist(videos, append = false) {
     currentPlaylist = append ? [...currentPlaylist, ...videos] : [...videos];
+    if ($('#playlistView').is(':visible')) renderPlaylist();
 }
 
 async function createPlaylistFromUI() {
@@ -749,15 +762,19 @@ function backToPlaylists() {
 function togglePlaylist() {
     const $view = $('#playlistView');
     const $btn = $('#playlistBtn');
+    const url = new URL(window.location);
 
     if ($view.is(':visible')) {
         $view.hide();
         $btn.removeClass('text-blue-500');
+        url.searchParams.delete('pl');
     } else {
         renderPlaylist();
         $view.show();
         $btn.addClass('text-blue-500');
+        url.searchParams.set('pl', 'open');
     }
+    window.history.replaceState({}, '', url);
 }
 
 

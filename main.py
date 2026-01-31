@@ -46,12 +46,13 @@ app = FastAPI(lifespan=lifespan)
 CACHE_DIR = "cached_videos"
 META_DIR = os.path.join(CACHE_DIR, "metadata")
 SUB_DIR = os.path.join(CACHE_DIR, "subtitles")
+THUMB_DIR = os.path.join(CACHE_DIR, "thumbnails")
 DATA_DIR = "server_data"
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 SEARCH_HISTORY_FILE = os.path.join(DATA_DIR, "search_history.json")
 PLAYLISTS_FILE = os.path.join(DATA_DIR, "playlists.json")
 
-for d in [CACHE_DIR, META_DIR, SUB_DIR, DATA_DIR]:
+for d in [CACHE_DIR, META_DIR, SUB_DIR, THUMB_DIR, DATA_DIR]:
     if not os.path.exists(d):
         os.makedirs(d)
 
@@ -128,16 +129,57 @@ async def download_subs_local(video_id: str, subtitles_list: list):
                 print(f"Failed to download sub {sub['lang']} for {video_id}: {e}")
     return local_subs
 
+async def download_thumbnail_local(video_id: str, remote_url: str):
+    """Downloads remote thumbnail to local thumbnails directory"""
+    if not remote_url:
+        return ""
+    
+    # Extract extension if possible, default to jpg
+    ext = "jpg"
+    if ".webp" in remote_url: ext = "webp"
+    elif ".png" in remote_url: ext = "png"
+    
+    local_filename = f"{video_id}.{ext}"
+    local_path = os.path.join(THUMB_DIR, local_filename)
+    local_url = f"/offline/thumbnails/{local_filename}"
+    
+    if os.path.exists(local_path):
+        return local_url
+        
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(remote_url)
+            if resp.status_code == 200:
+                with open(local_path, "wb") as f:
+                    f.write(resp.content)
+                return local_url
+    except Exception as e:
+        print(f"Thumbnail download failed for {video_id}: {e}")
+    
+    return remote_url # Fallback to remote if download fails
+
 def download_video_and_meta(video_id: str, video_info: dict):
     base_name = os.path.join(CACHE_DIR, video_id)
     final_mp4 = base_name + ".mp4"
     meta_path = os.path.join(META_DIR, f"{video_id}.json")
     
-    # Pre-download subtitles if any in background
-    # Since this is a thread, we use a new event loop or sync version
-    if video_info.get("subtitles"):
-        # We'll handle this in refresh_meta_task which is more flexible
-        pass
+    # Thumbnail sync download (since this is a thread, we use a helper to run async if needed or just use sync requests)
+    # To keep codebase consistent with httpx, let's use a quick synchronous fetch for the thread
+    remote_thumb = video_info.get("thumbnail")
+    if remote_thumb and not remote_thumb.startswith("/offline/"):
+        try:
+            import httpx as sync_httpx
+            with sync_httpx.Client() as client:
+                resp = client.get(remote_thumb)
+                if resp.status_code == 200:
+                    ext = "webp" if ".webp" in remote_thumb else "jpg"
+                    local_filename = f"{video_id}.{ext}"
+                    local_path = os.path.join(THUMB_DIR, local_filename)
+                    with open(local_path, "wb") as f:
+                        f.write(resp.content)
+                    video_info["thumbnail"] = f"/offline/thumbnails/{local_filename}"
+        except Exception as e:
+            print(f"Threaded thumbnail download failed for {video_id}: {e}")
 
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
@@ -253,7 +295,7 @@ def extract_subtitles(info: dict):
     return subtitles
 
 async def refresh_meta_task(video_id: str, meta_path: str):
-    """Refreshes metadata (subtitles, views) and downloads subs locally"""
+    """Refreshes metadata (subtitles, views, thumbnails) and downloads them locally"""
     try:
         print(f"Starting background metadata refresh for {video_id}...")
         ydl_opts = {'format': 'best', 'quiet': True, 'writesubtitles': True, 'allsubtitles': True}
@@ -270,6 +312,14 @@ async def refresh_meta_task(video_id: str, meta_path: str):
             meta["views"] = info.get('view_count', meta.get('views', 0))
             if not meta.get('uploader') and info.get('uploader'):
                 meta["uploader"] = info.get('uploader')
+            
+            # Local thumbnail check & download
+            remote_thumb = info.get('thumbnail') or meta.get('thumbnail_remote')
+            if remote_thumb and remote_thumb.startswith('http'):
+                meta["thumbnail_remote"] = remote_thumb
+                local_url = await download_thumbnail_local(video_id, remote_thumb)
+                if local_url.startswith('/offline/'):
+                    meta["thumbnail"] = local_url
             
             with open(meta_path, 'w', encoding='utf-8') as fw:
                 json.dump(meta, fw, ensure_ascii=False, indent=4)
@@ -288,8 +338,10 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
             with open(meta_path, 'r', encoding='utf-8') as f:
                 meta = json.load(f)
                 
-            # TRIGGER ASYNC REFRESH if data is incomplete (no subs or 0 views)
-            if "subtitles" not in meta or meta.get("views", 0) == 0:
+            # TRIGGER ASYNC REFRESH if data is incomplete 
+            # (no subs, 0 views, or thumbnail is still pointing to internet)
+            is_thumb_remote = meta.get("thumbnail", "").startswith("http")
+            if "subtitles" not in meta or meta.get("views", 0) == 0 or is_thumb_remote:
                 background_tasks.add_task(refresh_meta_task, video_id, meta_path)
             
             # Filter subs: Only keep those that actually exist on disk, and clean labels
@@ -313,6 +365,7 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
                 "is_offline": True, 
                 "status": "playing_offline",
                 "title": meta.get('title', 'Offline Video'),
+                "thumbnail": meta.get('thumbnail', ''),
                 "uploader": meta.get('uploader', 'Unknown Channel'),
                 "duration": meta.get('duration', 0),
                 "views": meta.get('views', 0),

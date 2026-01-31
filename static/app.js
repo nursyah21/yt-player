@@ -442,9 +442,11 @@ async function playVideo(video, updateUrl = true) {
     const $container = $('#playerContainer');
     const $playerEl = $('#videoPlayer');
     const $title = $('#nowPlayingTitle');
+    const $uploader = $('#nowPlayingUploader');
 
     $container.show();
     $title.text("Connecting...");
+    $uploader.text("Please wait...");
     currentVideoObj = video;
 
     // Initialize Plyr if not exists
@@ -472,11 +474,13 @@ async function playVideo(video, updateUrl = true) {
     if (data?.stream_url) {
         // Update metadata from stream response (more accurate)
         if (data.title) video.title = data.title;
+        if (data.thumbnail) video.thumbnail = data.thumbnail;
         if (data.uploader) video.uploader = data.uploader;
         if (data.duration) video.duration = data.duration;
         if (data.views) video.views = data.views;
 
         $title.text(video.title);
+        $uploader.text(video.uploader || "YouTube");
 
         const tracks = (data.subtitles || []).map(sub => ({
             kind: 'subtitles',

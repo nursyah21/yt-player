@@ -26,6 +26,12 @@
             text-transform: uppercase;
         }
 
+        @media (max-width: 781px) {
+            .logo-text {
+                display: none;
+            }
+        }
+
         /* Search Bar */
         .search-container {
             position: relative;
@@ -174,6 +180,23 @@
             z-index: 40;
             border-right: 1px solid #222;
             transition: transform 0.3s ease;
+            transform: translateX(0);
+        }
+
+        /* Mobile specific sidebar behavior */
+        @media (max-width: 780px) {
+            .sidebar {
+                transform: translateX(-240px);
+                box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
+            }
+
+            .main-content {
+                margin-left: 0 !important;
+            }
+
+            .sidebar.show-mobile {
+                transform: translateX(0);
+            }
         }
 
         .sidebar-item {
@@ -347,19 +370,54 @@
         let activeSection = 'home';
         let renderedVideoIds = new Set();
 
+        // Initialize sidebar based on screen width
+        function initSidebar() {
+            const isSmallScreen = window.innerWidth <= 780;
+            isSidebarOpen = !isSmallScreen;
+            applySidebarState();
+        }
+
         function toggleSidebar() {
+            isSidebarOpen = !isSidebarOpen;
+            applySidebarState();
+        }
+
+        function applySidebarState() {
             const sidebar = document.getElementById('sidebar');
             const mainContent = document.getElementById('mainContent');
-            isSidebarOpen = !isSidebarOpen;
+            const isSmallScreen = window.innerWidth <= 780;
 
             if (isSidebarOpen) {
                 sidebar.style.transform = 'translateX(0)';
-                mainContent.classList.remove('full-width');
+                if (!isSmallScreen) {
+                    mainContent.classList.remove('full-width');
+                }
+                if (isSmallScreen) {
+                    sidebar.classList.add('show-mobile');
+                }
             } else {
                 sidebar.style.transform = 'translateX(-240px)';
                 mainContent.classList.add('full-width');
+                if (isSmallScreen) {
+                    sidebar.classList.remove('show-mobile');
+                }
             }
         }
+
+        // Call init on load
+        window.addEventListener('load', initSidebar);
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const isSmallScreen = window.innerWidth <= 780;
+            // Jika pindah mode layar, sesuaikan status sidebar otomatis
+            if (isSmallScreen && isSidebarOpen) {
+                isSidebarOpen = false;
+                applySidebarState();
+            } else if (!isSmallScreen && !isSidebarOpen) {
+                isSidebarOpen = true;
+                applySidebarState();
+            }
+        });
 
         function showSection(sectionId, element) {
             activeSection = sectionId;

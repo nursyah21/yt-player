@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Studio</title>
-
+    <link rel="icon" href="data:.">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
@@ -568,17 +568,10 @@
                 `;
             }
 
-            const offlineBadge = (video.is_offline && type !== 'offline') ? `
-                <div class="absolute top-2 left-2 bg-blue-600 text-[9px] font-black text-white px-1.5 py-0.5 rounded flex items-center gap-1 z-30">
-                    <i class="fas fa-bookmark"></i> Di-cache
-                </div>
-            ` : '';
-
             return `
                 <div class="video-card flex flex-col group">
                     <div class="thumbnail-box mb-3 cursor-pointer relative overflow-hidden" onclick="playVideo(${videoData})">
                         ${actionBtn}
-                        ${offlineBadge}
                         <img src="${video.thumbnail}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
                         <div class="absolute bottom-2 right-2 bg-black/90 text-[10px] font-bold px-1.5 py-0.5 rounded text-gray-400">
                             ${video.duration ? formatTime(video.duration) : '0:00'}
@@ -590,11 +583,14 @@
                                 ${video.title}
                             </h3>
                         </div>
-                        <div class="mt-1.5 flex">
-                            <span class="text-[12px] text-gray-500 hover:text-white hover:underline transition cursor-pointer truncate max-w-[200px] block" 
+                        <div class="mt-1.5 flex flex-col">
+                            <span class="text-[12px] text-gray-500 hover:text-white hover:underline transition cursor-pointer truncate max-w-[200px] block mb-0.5" 
                                onclick="searchChannel(event, '${video.uploader.replace(/'/g, "\\'")}')">
                                ${video.uploader}
                             </span>
+                            <div class="text-[11px] text-gray-600 font-medium flex gap-1 items-center">
+                                <span>${video.views ? formatViews(video.views) : '0'}x ditonton</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -691,6 +687,13 @@
             const m = Math.floor(sec / 60);
             const s = Math.floor(sec % 60);
             return m + ":" + (s < 10 ? "0" + s : s);
+        }
+
+        function formatViews(n) {
+            if (!n) return "0";
+            if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + "jt";
+            if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + "rb";
+            return n.toString();
         }
 
         function toggleExpand() {

@@ -9,6 +9,7 @@ import json
 import shutil
 import threading
 import httpx
+from datetime import datetime
 
 app = FastAPI()
 
@@ -49,6 +50,7 @@ class HistoryItem(BaseModel):
     thumbnail: str
     uploader: str
     duration: int
+    views: int = 0
     is_offline: bool = False
 
 class SearchHistoryRequest(BaseModel):
@@ -100,7 +102,7 @@ async def extract_video(video_req: VideoRequest):
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        'extract_flat': 'in_playlist',
+        'extract_flat': True, 
         'playliststart': offset,
         'playlistend': offset + limit - 1,
     }
@@ -150,6 +152,7 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
                 "thumbnail": info.get('thumbnail'),
                 "uploader": info.get('uploader') or info.get('channel'),
                 "duration": info.get('duration'),
+                "views": info.get('view_count', 0),
                 "is_offline": True
             }
             
@@ -192,7 +195,7 @@ async def save_history(item: HistoryItem):
     try:
         with open(HISTORY_FILE, 'r+', encoding='utf-8') as f:
             history = json.load(f)
-            history = [h for h in history if h['id'] != item.id]
+            history = [h for h in history if h.get('id') != item.id]
             history.insert(0, item.dict())
             history = history[:100]
             f.seek(0)
@@ -215,7 +218,7 @@ async def delete_history(video_id: str):
     try:
         with open(HISTORY_FILE, 'r+', encoding='utf-8') as f:
             history = json.load(f)
-            history = [h for h in history if h['id'] != video_id]
+            history = [h for h in history if h.get('id') != video_id]
             f.seek(0)
             json.dump(history, f, ensure_ascii=False, indent=4)
             f.truncate()
@@ -244,7 +247,6 @@ async def get_suggestions(q: str):
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             data = response.json()
-            # Format data: [query, [suggestions]]
             return {"suggestions": data[1]}
     except Exception as e:
         return {"suggestions": []}
@@ -266,10 +268,9 @@ async def save_search_history(req: SearchHistoryRequest):
     try:
         with open(SEARCH_HISTORY_FILE, 'r+', encoding='utf-8') as f:
             history = json.load(f)
-            # Remove duplicate and push to front
             history = [h for h in history if h != query]
             history.insert(0, query)
-            history = history[:15] # Limit to 15 recent searches
+            history = history[:15]
             f.seek(0)
             json.dump(history, f, ensure_ascii=False, indent=4)
             f.truncate()

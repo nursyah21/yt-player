@@ -18,6 +18,32 @@
             font-family: 'Inter', sans-serif;
         }
 
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f0f0f;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2a2a2a;
+            border-radius: 10px;
+            border: 2px solid #0f0f0f;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3a3a3a;
+        }
+
+        /* For Firefox */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: #2a2a2a #0f0f0f;
+        }
+
         /* Logo Minimalis */
         .logo-text {
             font-weight: 900;
@@ -197,17 +223,72 @@
             flex-direction: column;
         }
 
-        #playerContainer.full-view .aspect-video {
-            flex: 1;
-            aspect-ratio: auto !important;
-            height: auto !important;
-            background: #000;
-        }
-
         #playerContainer.full-view video {
             width: 100%;
             height: 100%;
             object-fit: contain;
+        }
+
+        #playlistView {
+            background: #0a0a0a;
+            max-height: 250px;
+            overflow-y: auto;
+            display: none;
+            border-top: 1px solid #222;
+        }
+
+        #playerContainer.full-view #playlistView {
+            max-height: none;
+            flex: 1;
+            background: #080808;
+        }
+
+        .playlist-item {
+            display: flex;
+            gap: 12px;
+            padding: 10px 16px;
+            cursor: pointer;
+            transition: 0.2s;
+            border-bottom: 1px solid #1a1a1a;
+        }
+
+        .playlist-item:hover {
+            background: #151515;
+        }
+
+        .playlist-item.active {
+            background: #3b82f615;
+            border-left: 3px solid #3b82f6;
+        }
+
+        .playlist-item img {
+            width: 80px;
+            aspect-ratio: 16/9;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+
+        .playlist-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .playlist-title {
+            font-size: 11px;
+            color: #eee;
+            font-weight: 500;
+            line-height: 1.3;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .playlist-uploader {
+            font-size: 10px;
+            color: #666;
+            margin-top: 4px;
         }
 
         /* Sidebar Styles */
@@ -395,7 +476,22 @@
         <div class="flex items-center justify-between px-4 py-2 bg-[#111]">
             <span id="nowPlayingTitle"
                 class="text-[10px] font-bold truncate text-gray-500 uppercase tracking-widest">Streaming</span>
-            <div class="flex gap-4">
+            <div class="flex gap-4 items-center">
+                <div class="flex items-center bg-white/5 rounded-full px-2 py-1 mr-2">
+                    <button onclick="playPrev()" class="text-gray-400 hover:text-white px-2 py-1 transition"
+                        title="Video Sebelumnya">
+                        <i class="fas fa-step-backward text-[10px]"></i>
+                    </button>
+                    <div class="w-[1px] h-3 bg-white/10 mx-1"></div>
+                    <button onclick="playNext()" class="text-gray-400 hover:text-white px-2 py-1 transition"
+                        title="Video Selanjutnya">
+                        <i class="fas fa-step-forward text-[10px]"></i>
+                    </button>
+                </div>
+                <button id="playlistBtn" onclick="togglePlaylist()" class="text-gray-600 hover:text-white"
+                    title="Daftar Putar">
+                    <i class="fas fa-list-ul"></i>
+                </button>
                 <button onclick="toggleExpand()" class="text-gray-600 hover:text-white"><i id="expandIcon"
                         class="fas fa-expand-alt"></i></button>
                 <button onclick="closePlayer()" class="text-gray-600 hover:text-red-500"><i
@@ -405,6 +501,7 @@
         <div class="aspect-video">
             <video id="videoPlayer" controls autoplay class="w-full h-full"></video>
         </div>
+        <div id="playlistView"></div>
     </div>
 
     <script>
@@ -415,6 +512,8 @@
         let currentQuery = "";
         let activeSection = 'home';
         let renderedVideoIds = new Set();
+        let currentPlaylist = [];
+        let currentIndex = -1;
 
         // Initialize sidebar based on screen width
         function initSidebar() {
@@ -556,6 +655,73 @@
             }
         }
 
+        function updatePlaylist(videos, append = false) {
+            if (append) {
+                currentPlaylist = [...currentPlaylist, ...videos];
+            } else {
+                currentPlaylist = [...videos];
+            }
+        }
+
+        function playNext() {
+            if (currentIndex < currentPlaylist.length - 1) {
+                playVideo(currentPlaylist[currentIndex + 1]);
+            }
+        }
+
+        function playPrev() {
+            if (currentIndex > 0) {
+                playVideo(currentPlaylist[currentIndex - 1]);
+            }
+        }
+
+        function togglePlaylist() {
+            const playlistView = document.getElementById('playlistView');
+            const videoPlayer = document.querySelector('#playerContainer .aspect-video');
+            const btn = document.getElementById('playlistBtn');
+
+            if (playlistView.style.display === 'block') {
+                playlistView.style.display = 'none';
+                if (document.getElementById('playerContainer').classList.contains('full-view')) {
+                    videoPlayer.style.display = 'block';
+                }
+                btn.classList.remove('text-blue-500');
+            } else {
+                renderPlaylist();
+                playlistView.style.display = 'block';
+                if (document.getElementById('playerContainer').classList.contains('full-view')) {
+                    videoPlayer.style.display = 'none';
+                }
+                btn.classList.add('text-blue-500');
+            }
+        }
+
+        function renderPlaylist() {
+            const container = document.getElementById('playlistView');
+            if (!container) return;
+
+            container.innerHTML = currentPlaylist.map((video, index) => {
+                const isActive = index === currentIndex;
+                const videoData = JSON.stringify(video).replace(/"/g, '&quot;');
+
+                return `
+                    <div class="playlist-item ${isActive ? 'active' : ''}" onclick="playVideo(${videoData})">
+                        <img src="${video.thumbnail}">
+                        <div class="playlist-info">
+                            <div class="playlist-title">${video.title}</div>
+                            <div class="playlist-uploader">${video.uploader || 'Channel'}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Scroll to active item
+            const activeItem = container.querySelector('.active');
+            if (activeItem) {
+                activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
         async function searchVideos(customQuery = null, displayName = null, updateUrl = true) {
             const query = customQuery || document.getElementById('videoQuery').value;
             if (displayName) document.getElementById('videoQuery').value = displayName;
@@ -601,15 +767,18 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    data.results.forEach(video => {
-                        // Skip jika bukan video asli (tidak ada durasi atau durasi 0)
-                        if (!video.duration || video.duration === 0 || video.duration === "0" || video.duration === "00:00") return;
+                    const validResults = data.results.filter(video =>
+                        video.duration && video.duration !== 0 && video.duration !== "0" && video.duration !== "00:00"
+                    );
 
+                    validResults.forEach(video => {
                         if (!renderedVideoIds.has(video.id)) {
                             grid.innerHTML += createVideoCard(video, 'search');
                             renderedVideoIds.add(video.id);
                         }
                     });
+
+                    updatePlaylist(validResults, false);
                     currentOffset += data.results.length;
                 }
             } catch (err) {
@@ -638,15 +807,18 @@
                 const data = await response.json();
 
                 if (response.ok && data.results.length > 0) {
-                    data.results.forEach(video => {
-                        // Skip jika bukan video asli
-                        if (!video.duration || video.duration === 0 || video.duration === "0" || video.duration === "00:00") return;
+                    const validResults = data.results.filter(video =>
+                        video.duration && video.duration !== 0 && video.duration !== "0" && video.duration !== "00:00"
+                    );
 
+                    validResults.forEach(video => {
                         if (!renderedVideoIds.has(video.id)) {
                             grid.innerHTML += createVideoCard(video, 'search');
                             renderedVideoIds.add(video.id);
                         }
                     });
+
+                    updatePlaylist(validResults, true);
                     currentOffset += data.results.length;
                 }
             } catch (err) {
@@ -779,6 +951,20 @@
                         });
                     }
                     saveToHistory(video);
+
+                    // Update current index based on this video
+                    currentIndex = currentPlaylist.findIndex(v => v.id === video.id);
+
+                    // Add onended listener for auto-play next
+                    player.onended = () => {
+                        console.log("Video ended, playing next...");
+                        playNext();
+                    };
+
+                    // Re-render playlist if it's open
+                    if (document.getElementById('playlistView').style.display === 'block') {
+                        renderPlaylist();
+                    }
                 }
             } catch (err) {
                 alert("Gagal memutar video.");
@@ -801,6 +987,7 @@
                     empty.classList.add('hidden');
                     // Reverse order agar yang terbaru didownload muncul paling atas
                     grid.innerHTML = data.results.map(video => createVideoCard(video, 'offline')).join('');
+                    updatePlaylist(data.results, false);
                 }
             } catch (err) {
                 grid.innerHTML = '<div class="col-span-full text-center py-20 text-red-500">Gagal memuat. Pastikan server aktif.</div>';
@@ -834,6 +1021,7 @@
                 } else {
                     empty.classList.add('hidden');
                     grid.innerHTML = data.results.map(video => createVideoCard(video, 'history')).join('');
+                    updatePlaylist(data.results, false);
                 }
             } catch (err) {
                 grid.innerHTML = '<div class="col-span-full text-center py-20 text-red-500">Gagal memuat histori.</div>';

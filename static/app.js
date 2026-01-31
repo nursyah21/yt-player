@@ -169,13 +169,23 @@ function setupEventListeners() {
         }
     });
 
-    // Spacebar to Play/Pause (Single Source of Truth)
+    // Keyboard Shortcuts (Space, Arrows)
     $(document).on('keydown', (e) => {
         const isInput = document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA';
+        if (isInput || !$('#playerContainer').is(':visible') || !plyrPlayer) return;
 
-        if (e.code === 'Space' && !isInput && $('#playerContainer').is(':visible') && plyrPlayer) {
+        const v = document.querySelector('video');
+        if (!v) return;
+
+        if (e.code === 'Space') {
             e.preventDefault();
             plyrPlayer.togglePlay();
+        } else if (e.code === 'ArrowRight') {
+            e.preventDefault();
+            v.currentTime = Math.min(v.duration, v.currentTime + 5);
+        } else if (e.code === 'ArrowLeft') {
+            e.preventDefault();
+            v.currentTime = Math.max(0, v.currentTime - 5);
         }
     });
 

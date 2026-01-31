@@ -180,6 +180,10 @@
             <i class="fas fa-history"></i>
             <span>Histori</span>
         </div>
+        <div class="sidebar-item" onclick="showSection('offline', this)">
+            <i class="fas fa-download"></i>
+            <span>Offline</span>
+        </div>
     </aside>
 
     <main id="mainContent" class="main-content mt-24 max-w-[1400px] px-6">
@@ -236,6 +240,25 @@
                 <p>Belum ada histori tontonan.</p>
             </div>
         </section>
+
+        <!-- Offline Section -->
+        <section id="offlineSection" class="hidden-section">
+            <div class="flex justify-between items-center mb-10">
+                <h2 class="text-2xl font-bold text-white uppercase tracking-wider">Koleksi Offline</h2>
+                <div class="flex gap-4">
+                    <button onclick="loadOffline()"
+                        class="text-gray-400 hover:text-white px-4 py-2 rounded text-xs font-bold transition">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="offlineGrid"
+                class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-10">
+            </div>
+            <div id="offlineEmpty" class="hidden col-span-full text-center py-20 opacity-30">
+                <p>Belum ada video offline yang selesai diproses.</p>
+            </div>
+        </section>
     </main>
 
     <div id="playerContainer">
@@ -284,10 +307,14 @@
 
             document.getElementById('homeSection').classList.add('hidden-section');
             document.getElementById('historySection').classList.add('hidden-section');
+            const offSection = document.getElementById('offlineSection');
+            if (offSection) offSection.classList.add('hidden-section');
 
-            document.getElementById(sectionId + 'Section').classList.remove('hidden-section');
+            const targetSection = document.getElementById(sectionId + 'Section');
+            if (targetSection) targetSection.classList.remove('hidden-section');
 
             if (sectionId === 'history') loadHistory();
+            if (sectionId === 'offline') loadOffline();
         }
 
         async function searchVideos() {
@@ -317,7 +344,7 @@
                 if (response.ok) {
                     data.results.forEach(video => {
                         if (!renderedVideoIds.has(video.id)) {
-                            grid.innerHTML += createVideoCard(video);
+                            grid.innerHTML += createVideoCard(video, 'search');
                             renderedVideoIds.add(video.id);
                         }
                     });
@@ -351,7 +378,7 @@
                 if (response.ok && data.results.length > 0) {
                     data.results.forEach(video => {
                         if (!renderedVideoIds.has(video.id)) {
-                            grid.innerHTML += createVideoCard(video);
+                            grid.innerHTML += createVideoCard(video, 'search');
                             renderedVideoIds.add(video.id);
                         }
                     });
@@ -389,19 +416,44 @@
             loadHistory();
         }
 
-        function createVideoCard(video, isHistory = false) {
+        async function deleteOfflineItem(event, videoId) {
+            event.stopPropagation();
+            if (!confirm('Hapus dari offline?')) return;
+            const res = await fetch(`/delete_offline/${videoId}`, { method: 'DELETE' });
+            if (res.ok) loadOffline();
+        }
+
+        function createVideoCard(video, type = 'search') {
             const videoData = JSON.stringify(video).replace(/"/g, '&quot;');
-            const deleteBtn = isHistory ? `
-                <button onclick="deleteHistoryItem(event, '${video.id}')" 
-                    class="absolute top-2 right-2 bg-black/80 hover:bg-red-600 text-white w-7 h-7 rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 z-30">
-                    <i class="fas fa-times text-xs"></i>
-                </button>
+
+            let actionBtn = '';
+            if (type === 'history') {
+                actionBtn = `
+                    <button onclick="deleteHistoryItem(event, '${video.id}')" 
+                        class="absolute top-2 right-2 bg-black/80 hover:bg-red-600 text-white w-7 h-7 rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 z-30">
+                        <i class="fas fa-times text-xs"></i>
+                    </button>
+                `;
+            } else if (type === 'offline') {
+                actionBtn = `
+                    <button onclick="deleteOfflineItem(event, '${video.id}')" 
+                        class="absolute top-2 right-2 bg-black/80 hover:bg-red-600 text-white w-7 h-7 rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 z-30">
+                        <i class="fas fa-trash text-xs"></i>
+                    </button>
+                `;
+            }
+
+            const offlineBadge = (video.is_offline && type !== 'offline') ? `
+                <div class="absolute top-2 left-2 bg-blue-600 text-[9px] font-black text-white px-1.5 py-0.5 rounded flex items-center gap-1 z-30">
+                    <i class="fas fa-bookmark"></i> Di-cache
+                </div>
             ` : '';
 
             return `
                 <div class="video-card flex flex-col group">
                     <div class="thumbnail-box mb-3 cursor-pointer relative overflow-hidden" onclick="playVideo(${videoData})">
-                        ${deleteBtn}
+                        ${actionBtn}
+                        ${offlineBadge}
                         <img src="${video.thumbnail}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
                         <div class="absolute bottom-2 right-2 bg-black/90 text-[10px] font-bold px-1.5 py-0.5 rounded text-gray-400">
                             ${video.duration ? formatTime(video.duration) : '0:00'}
@@ -447,6 +499,28 @@
             }
         }
 
+        async function loadOffline() {
+            const grid = document.getElementById('offlineGrid');
+            const empty = document.getElementById('offlineEmpty');
+            grid.innerHTML = '<div class="col-span-full text-center py-20 opacity-30">Memeriksa koleksi...</div>';
+
+            try {
+                const res = await fetch('/list_offline');
+                const data = await res.json();
+
+                if (data.results.length === 0) {
+                    grid.innerHTML = '';
+                    empty.classList.remove('hidden');
+                } else {
+                    empty.classList.add('hidden');
+                    // Reverse order agar yang terbaru didownload muncul paling atas
+                    grid.innerHTML = data.results.map(video => createVideoCard(video, 'offline')).join('');
+                }
+            } catch (err) {
+                grid.innerHTML = '<div class="col-span-full text-center py-20 text-red-500">Gagal memuat. Pastikan server aktif.</div>';
+            }
+        }
+
         function saveToHistory(video) {
             let history = JSON.parse(localStorage.getItem('yt_studio_history_v2') || '[]');
             history = history.filter(item => item.id !== video.id);
@@ -465,7 +539,7 @@
                 empty.classList.remove('hidden');
             } else {
                 empty.classList.add('hidden');
-                grid.innerHTML = history.map(video => createVideoCard(video, true)).join('');
+                grid.innerHTML = history.map(video => createVideoCard(video, 'history')).join('');
             }
         }
 

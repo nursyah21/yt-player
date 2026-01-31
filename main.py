@@ -545,7 +545,7 @@ async def save_search_history(req: SearchHistoryRequest):
             history = json.load(f)
             history = [h for h in history if h != query]
             history.insert(0, query)
-            history = history[:15]
+            history = history[:8]
             f.seek(0)
             json.dump(history, f, ensure_ascii=False, indent=4)
             f.truncate()

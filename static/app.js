@@ -304,7 +304,7 @@ function handleSearchInput() {
 async function showSearchHistory() {
     const data = await Helper.fetchJSON('/list_search_history');
     if (data && data.results?.length > 0) {
-        renderSuggestions(data.results, true);
+        renderSuggestions(data.results.slice(0, 8), true);
     } else {
         $('#suggestionsDropdown').hide();
     }
@@ -338,6 +338,11 @@ window.deleteHistoryQuery = async (event, query) => {
 };
 
 function handleSearchKeydown(e) {
+    if (e.key === 'Escape') {
+        $('#suggestionsDropdown').hide();
+        return;
+    }
+
     if (e.key === 'Enter') {
         const $items = $('.suggestion-item');
         if ($('#suggestionsDropdown').is(':visible') && selectedIndex >= 0) {

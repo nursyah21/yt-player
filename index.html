@@ -208,6 +208,16 @@
                     <p class="text-xl">Cari video untuk memulai</p>
                 </div>
             </div>
+
+            <!-- Sentinel for Infinite Scroll -->
+            <div id="infiniteLoader" class="hidden py-10 flex justify-center w-full">
+                <div class="flex items-center gap-3">
+                    <div class="w-5 h-5 border-2 border-white/10 border-t-white rounded-full animate-spin"></div>
+                    <span class="text-xs font-bold tracking-widest text-gray-500 uppercase">Memuat lebih
+                        banyak...</span>
+                </div>
+            </div>
+            <div id="scrollSentinel" class="h-10"></div>
         </section>
 
         <!-- History Section -->
@@ -247,6 +257,11 @@
     <script>
         let isExpanded = false;
         let isSidebarOpen = true;
+        let currentOffset = 1;
+        let isFetching = false;
+        let currentQuery = "";
+        let activeSection = 'home';
+        let renderedVideoIds = new Set();
 
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
@@ -263,6 +278,7 @@
         }
 
         function showSection(sectionId, element) {
+            activeSection = sectionId;
             document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
             if (element) element.classList.add('active');
 
@@ -279,31 +295,84 @@
             const grid = document.getElementById('resultsGrid');
             const loading = document.getElementById('loading');
 
-            if (!query) return;
+            if (!query || isFetching) return;
+
+            currentQuery = query;
+            currentOffset = 1;
+            renderedVideoIds.clear();
 
             showSection('home');
             grid.innerHTML = '';
             loading.classList.remove('hidden');
 
             try {
+                isFetching = true;
                 const response = await fetch('/extract', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: query })
+                    body: JSON.stringify({ query: query, offset: currentOffset })
                 });
                 const data = await response.json();
 
                 if (response.ok) {
                     data.results.forEach(video => {
-                        grid.innerHTML += createVideoCard(video);
+                        if (!renderedVideoIds.has(video.id)) {
+                            grid.innerHTML += createVideoCard(video);
+                            renderedVideoIds.add(video.id);
+                        }
                     });
+                    currentOffset += data.results.length;
                 }
             } catch (err) {
                 console.error(err);
             } finally {
                 loading.classList.add('hidden');
+                isFetching = false;
             }
         }
+
+        async function loadMoreVideos() {
+            if (isFetching || activeSection !== 'home' || !currentQuery) return;
+
+            const grid = document.getElementById('resultsGrid');
+            const loader = document.getElementById('infiniteLoader');
+
+            isFetching = true;
+            loader.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: currentQuery, offset: currentOffset })
+                });
+                const data = await response.json();
+
+                if (response.ok && data.results.length > 0) {
+                    data.results.forEach(video => {
+                        if (!renderedVideoIds.has(video.id)) {
+                            grid.innerHTML += createVideoCard(video);
+                            renderedVideoIds.add(video.id);
+                        }
+                    });
+                    currentOffset += data.results.length;
+                }
+            } catch (err) {
+                console.error("Gagal memuat lebih banyak video:", err);
+            } finally {
+                isFetching = false;
+                loader.classList.add('hidden');
+            }
+        }
+
+        // Observer for Infinite Scroll
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) {
+                loadMoreVideos();
+            }
+        }, { threshold: 0.1 });
+
+        observer.observe(document.getElementById('scrollSentinel'));
 
         function searchChannel(event, name) {
             event.stopPropagation();

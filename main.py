@@ -17,6 +17,7 @@ app.add_middleware(
 
 class VideoRequest(BaseModel):
     query: str
+    offset: int = 1
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
@@ -28,15 +29,20 @@ async def get_index():
 @app.post("/extract")
 async def extract_video(video_req: VideoRequest):
     search_query = video_req.query.strip()
+    offset = video_req.offset
+    limit = 20
     
-    # Ambil 20 hasil pencarian dengan mode cepat
+    # Mode pencarian
     if not search_query.startswith(("http://", "https://")):
-        search_query = f"ytsearch20:{search_query}"
+        # Kita ambil limit + offset - 1 hasil, dan gunakan playliststart/end untuk memotongnya
+        search_query = f"ytsearch{offset + limit - 1}:{search_query}"
     
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        'extract_flat': 'in_playlist', # Mode instan
+        'extract_flat': 'in_playlist',
+        'playliststart': offset,
+        'playlistend': offset + limit - 1,
     }
     
     try:
@@ -64,7 +70,6 @@ async def extract_video(video_req: VideoRequest):
 
 @app.get("/get_stream")
 async def get_stream(video_id: str):
-    """Fungsi khusus untuk mengambil link streaming saat video di-klik"""
     ydl_opts = {
         'format': 'best',
         'quiet': True,

@@ -8,6 +8,7 @@ import os
 import json
 import shutil
 import threading
+import httpx
 
 app = FastAPI()
 
@@ -16,15 +17,17 @@ CACHE_DIR = "cached_videos"
 META_DIR = os.path.join(CACHE_DIR, "metadata")
 DATA_DIR = "server_data"
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
+SEARCH_HISTORY_FILE = os.path.join(DATA_DIR, "search_history.json")
 
 for d in [CACHE_DIR, META_DIR, DATA_DIR]:
     if not os.path.exists(d):
         os.makedirs(d)
 
-# Initialize history file if not exists
-if not os.path.exists(HISTORY_FILE):
-    with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-        json.dump([], f)
+# Initialize files if not exists
+for f_path in [HISTORY_FILE, SEARCH_HISTORY_FILE]:
+    if not os.path.exists(f_path):
+        with open(f_path, 'w', encoding='utf-8') as f:
+            json.dump([], f)
 
 # Akses file offline
 app.mount("/offline", StaticFiles(directory=CACHE_DIR), name="offline")
@@ -47,6 +50,9 @@ class HistoryItem(BaseModel):
     uploader: str
     duration: int
     is_offline: bool = False
+
+class SearchHistoryRequest(BaseModel):
+    query: str
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
@@ -186,11 +192,8 @@ async def save_history(item: HistoryItem):
     try:
         with open(HISTORY_FILE, 'r+', encoding='utf-8') as f:
             history = json.load(f)
-            # Remove existing entry of the same video
             history = [h for h in history if h['id'] != item.id]
-            # Add to the beginning
             history.insert(0, item.dict())
-            # Keep only last 100
             history = history[:100]
             f.seek(0)
             json.dump(history, f, ensure_ascii=False, indent=4)
@@ -228,6 +231,64 @@ async def clear_history():
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- SEARCH SUGGESTIONS & HISTORY ---
+
+@app.get("/search_suggestions")
+async def get_suggestions(q: str):
+    if not q:
+        return {"suggestions": []}
+    
+    url = f"https://suggestqueries.google.com/complete/search?client=firefox&q={q}"
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            data = response.json()
+            # Format data: [query, [suggestions]]
+            return {"suggestions": data[1]}
+    except Exception as e:
+        return {"suggestions": []}
+
+@app.get("/list_search_history")
+async def list_search_history():
+    try:
+        with open(SEARCH_HISTORY_FILE, 'r', encoding='utf-8') as f:
+            return {"results": json.load(f)}
+    except:
+        return {"results": []}
+
+@app.post("/save_search_history")
+async def save_search_history(req: SearchHistoryRequest):
+    query = req.query.strip()
+    if not query:
+        return {"status": "ignored"}
+    
+    try:
+        with open(SEARCH_HISTORY_FILE, 'r+', encoding='utf-8') as f:
+            history = json.load(f)
+            # Remove duplicate and push to front
+            history = [h for h in history if h != query]
+            history.insert(0, query)
+            history = history[:15] # Limit to 15 recent searches
+            f.seek(0)
+            json.dump(history, f, ensure_ascii=False, indent=4)
+            f.truncate()
+        return {"status": "success"}
+    except:
+        return {"status": "error"}
+
+@app.delete("/delete_search_history")
+async def delete_search_history(q: str):
+    try:
+        with open(SEARCH_HISTORY_FILE, 'r+', encoding='utf-8') as f:
+            history = json.load(f)
+            history = [h for h in history if h != q]
+            f.seek(0)
+            json.dump(history, f, ensure_ascii=False, indent=4)
+            f.truncate()
+        return {"status": "success"}
+    except:
+        return {"status": "error"}
 
 if __name__ == "__main__":
     import uvicorn

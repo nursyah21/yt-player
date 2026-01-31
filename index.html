@@ -28,13 +28,75 @@
 
         /* Search Bar */
         .search-container {
-            background-color: #000;
-            border: 1px solid #222;
-            border-radius: 4px;
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            background: #0f0f0f;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
             display: flex;
             align-items: center;
-            width: 100%;
-            max-width: 500px;
+            transition: all 0.3s;
+        }
+
+        .search-container:focus-within {
+            border-color: #3b82f6;
+            background: #1a1a1a;
+        }
+
+        .suggestions-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #1a1a1a;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-top: none;
+            border-radius: 0 0 12px 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: none;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .suggestion-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            color: #ccc;
+            transition: all 0.2s;
+        }
+
+        .suggestion-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+        }
+
+        .suggestion-item i {
+            color: #555;
+            width: 14px;
+            text-align: center;
+        }
+
+        .suggestion-item.history-item i.fa-history {
+            color: #3b82f6;
+        }
+
+        .suggestion-item .delete-history {
+            margin-left: auto;
+            color: #555;
+            padding: 4px;
+            border-radius: 4px;
+            font-size: 10px;
+        }
+
+        .suggestion-item .delete-history:hover {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
         }
 
         /* Video Card */
@@ -160,11 +222,10 @@
         </div>
 
         <div class="search-container">
+            <i class="fas fa-search text-gray-500 ml-4"></i>
             <input type="text" id="videoQuery" placeholder="Cari video..."
-                class="bg-transparent w-full py-2 px-4 focus:outline-none text-sm text-gray-200">
-            <button onclick="searchVideos()" class="px-5 text-gray-600 hover:text-white transition">
-                <i class="fas fa-search"></i>
-            </button>
+                class="bg-transparent w-full py-2 px-4 focus:outline-none text-sm text-gray-200" autocomplete="off">
+            <div id="suggestionsDropdown" class="suggestions-dropdown"></div>
         </div>
 
         <div class="w-16"></div>
@@ -334,6 +395,13 @@
 
             try {
                 isFetching = true;
+                // Simpan histori pencarian ke server
+                fetch('/save_search_history', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query })
+                });
+
                 const response = await fetch('/extract', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -580,8 +648,96 @@
             document.getElementById('playerContainer').style.display = 'none';
         }
 
-        document.getElementById('videoQuery').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') searchVideos();
+        // --- SUGGESTIONS & SEARCH HISTORY LOGIC ---
+        const searchInput = document.getElementById('videoQuery');
+        const suggestionsBox = document.getElementById('suggestionsDropdown');
+        let suggestionDebounceTimer;
+
+        searchInput.addEventListener('input', () => {
+            clearTimeout(suggestionDebounceTimer);
+            const query = searchInput.value.trim();
+
+            if (!query) {
+                showSearchHistory();
+                return;
+            }
+
+            suggestionDebounceTimer = setTimeout(async () => {
+                try {
+                    const res = await fetch(`/search_suggestions?q=${encodeURIComponent(query)}`);
+                    const data = await res.json();
+                    renderSuggestions(data.suggestions, false);
+                } catch (err) {
+                    console.error("Gagal ambil saran:", err);
+                }
+            }, 300);
+        });
+
+        searchInput.addEventListener('focus', () => {
+            if (!searchInput.value.trim()) {
+                showSearchHistory();
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-container')) {
+                suggestionsBox.style.display = 'none';
+            }
+        });
+
+        async function showSearchHistory() {
+            try {
+                const res = await fetch('/list_search_history');
+                const data = await res.json();
+                if (data.results && data.results.length > 0) {
+                    renderSuggestions(data.results, true);
+                } else {
+                    suggestionsBox.style.display = 'none';
+                }
+            } catch (err) {
+                console.error("Gagal ambil histori pencarian:", err);
+            }
+        }
+
+        function renderSuggestions(list, isHistory) {
+            if (!list || list.length === 0) {
+                suggestionsBox.style.display = 'none';
+                return;
+            }
+
+            suggestionsBox.innerHTML = list.map(item => `
+                <div class="suggestion-item ${isHistory ? 'history-item' : ''}" onclick="selectSuggestion('${item.replace(/'/g, "\\'")}')">
+                    <i class="fas ${isHistory ? 'fa-history' : 'fa-search'}"></i>
+                    <span>${item}</span>
+                    ${isHistory ? `<i class="fas fa-times delete-history" onclick="deleteHistoryQuery(event, '${item.replace(/'/g, "\\'")}')"></i>` : ''}
+                </div>
+            `).join('');
+
+            suggestionsBox.style.display = 'block';
+        }
+
+        window.selectSuggestion = (val) => {
+            searchInput.value = val;
+            suggestionsBox.style.display = 'none';
+            searchVideos();
+        };
+
+        window.deleteHistoryQuery = async (event, query) => {
+            event.stopPropagation();
+            try {
+                const res = await fetch(`/delete_search_history?q=${encodeURIComponent(query)}`, { method: 'DELETE' });
+                if (res.ok) showSearchHistory();
+            } catch (err) {
+                console.error("Gagal hapus histori pencarian:", err);
+            }
+        };
+
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                suggestionsBox.style.display = 'none';
+                searchVideos();
+            }
         });
     </script>
 </body>

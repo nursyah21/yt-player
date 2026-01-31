@@ -1,0 +1,11 @@
+# 1. Mengaktifkan Virtual Environment
+if (Test-Path ".\.venv\Scripts\Activate.ps1") {
+    & ".\.venv\Scripts\Activate.ps1"
+} else {
+    Write-Host "Virtual Environment tidak ditemukan! Jalankan versi lengkap dulu sekali." -ForegroundColor Red
+    exit
+}
+
+# 2. Jalankan Server Langsung
+# Write-Host "--- Menjalankan Server (Fast Mode) ---" -ForegroundColor Green
+uvicorn main:app --reload --host 0.0.0.0 --port 8000

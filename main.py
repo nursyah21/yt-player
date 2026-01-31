@@ -48,19 +48,22 @@ META_DIR = os.path.join(CACHE_DIR, "metadata")
 DATA_DIR = "server_data"
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 SEARCH_HISTORY_FILE = os.path.join(DATA_DIR, "search_history.json")
+PLAYLISTS_FILE = os.path.join(DATA_DIR, "playlists.json")
 
 for d in [CACHE_DIR, META_DIR, DATA_DIR]:
     if not os.path.exists(d):
         os.makedirs(d)
 
 # Initialize files if not exists
-for f_path in [HISTORY_FILE, SEARCH_HISTORY_FILE]:
+for f_path in [HISTORY_FILE, SEARCH_HISTORY_FILE, PLAYLISTS_FILE]:
     if not os.path.exists(f_path):
         with open(f_path, 'w', encoding='utf-8') as f:
-            json.dump([], f)
+            default_val = {} if f_path == PLAYLISTS_FILE else []
+            json.dump(default_val, f)
 
 # Akses file offline
 app.mount("/offline", StaticFiles(directory=CACHE_DIR), name="offline")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -84,6 +87,10 @@ class HistoryItem(BaseModel):
 
 class SearchHistoryRequest(BaseModel):
     query: str
+
+class PlaylistVideoRequest(BaseModel):
+    playlist_name: str
+    video: HistoryItem
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
@@ -336,6 +343,87 @@ async def delete_search_history(q: str):
         return {"status": "success"}
     except:
         return {"status": "error"}
+
+# --- PLAYLISTS ---
+
+@app.get("/list_playlists")
+async def list_playlists():
+    try:
+        if not os.path.exists(PLAYLISTS_FILE):
+            return {}
+        with open(PLAYLISTS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        return {}
+
+@app.post("/add_to_playlist")
+async def add_to_playlist(req: PlaylistVideoRequest):
+    try:
+        with open(PLAYLISTS_FILE, 'r+', encoding='utf-8') as f:
+            playlists = json.load(f)
+            name = req.playlist_name.strip()
+            if not name:
+                raise HTTPException(status_code=400, detail="Nama playlist tidak boleh kosong")
+                
+            if name not in playlists:
+                playlists[name] = []
+            
+            # Prevent duplicates
+            playlists[name] = [v for v in playlists[name] if v['id'] != req.video.id]
+            playlists[name].insert(0, req.video.dict())
+            
+            f.seek(0)
+            json.dump(playlists, f, ensure_ascii=False, indent=4)
+            f.truncate()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/create_playlist")
+async def create_playlist(data: dict):
+    try:
+        name = data.get("name", "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Nama playlist tidak boleh kosong")
+            
+        with open(PLAYLISTS_FILE, 'r+', encoding='utf-8') as f:
+            playlists = json.load(f)
+            if name not in playlists:
+                playlists[name] = []
+            f.seek(0)
+            json.dump(playlists, f, ensure_ascii=False, indent=4)
+            f.truncate()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/delete_from_playlist/{playlist_name}/{video_id}")
+async def delete_from_playlist(playlist_name: str, video_id: str):
+    try:
+        with open(PLAYLISTS_FILE, 'r+', encoding='utf-8') as f:
+            playlists = json.load(f)
+            if playlist_name in playlists:
+                playlists[playlist_name] = [v for v in playlists[playlist_name] if v['id'] != video_id]
+                f.seek(0)
+                json.dump(playlists, f, ensure_ascii=False, indent=4)
+                f.truncate()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/delete_playlist/{playlist_name}")
+async def delete_playlist(playlist_name: str):
+    try:
+        with open(PLAYLISTS_FILE, 'r+', encoding='utf-8') as f:
+            playlists = json.load(f)
+            if playlist_name in playlists:
+                del playlists[playlist_name]
+                f.seek(0)
+                json.dump(playlists, f, ensure_ascii=False, indent=4)
+                f.truncate()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

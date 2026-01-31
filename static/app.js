@@ -231,7 +231,8 @@ async function handleRouting() {
     const full = params.get('full');
 
     if (v) {
-        await playVideo({ id: v, title: "Loading...", thumbnail: "" }, false);
+        const startTime = parseInt(params.get('t')) || 0;
+        await playVideo({ id: v, title: "Loading...", thumbnail: "" }, false, startTime);
     }
 
     if (q) {
@@ -270,6 +271,9 @@ async function showSection(sectionId, element, updateUrl = true) {
 
     $('#homeSection, #historySection, #offlineSection, #playlistSection').addClass('hidden-section');
     $(`#${sectionId}Section`).removeClass('hidden-section');
+
+    const sectionNames = { 'home': 'Beranda', 'history': 'Histori', 'offline': 'Offline', 'playlist': 'Playlist' };
+    document.title = `${sectionNames[sectionId] || 'Video'} - Video Studio`;
 
     if (sectionId === 'history') await loadHistory();
     if (sectionId === 'offline') await loadOffline();
@@ -390,6 +394,7 @@ async function searchVideos(customQuery = null, displayName = null, updateUrl = 
     showSection('home', null, false);
     $('#resultsGrid').empty();
     $('#loading').removeClass('hidden');
+    document.title = `Cari: ${query} - Video Studio`;
 
     try {
         isFetching = true;
@@ -443,7 +448,7 @@ function searchChannel(event, channelId, uploaderName) {
 }
 
 // --- Player ---
-async function playVideo(video, updateUrl = true) {
+async function playVideo(video, updateUrl = true, startTime = 0) {
     const $container = $('#playerContainer');
     const $playerEl = $('#videoPlayer');
     const $title = $('#nowPlayingTitle');
@@ -472,6 +477,7 @@ async function playVideo(video, updateUrl = true) {
     if (updateUrl) {
         const url = new URL(window.location);
         url.searchParams.set('v', video.id);
+        if (startTime > 0) url.searchParams.set('t', startTime);
         window.history.pushState({}, '', url);
     }
 
@@ -486,6 +492,7 @@ async function playVideo(video, updateUrl = true) {
 
         $title.text(video.title);
         $uploader.text(video.uploader || "YouTube");
+        document.title = `${video.title} - Video Studio`;
 
         const tracks = (data.subtitles || []).map(sub => ({
             kind: 'subtitles',
@@ -502,9 +509,30 @@ async function playVideo(video, updateUrl = true) {
             tracks: tracks
         };
 
-        plyrPlayer.play().catch(() => {
-            // Plyr handles interaction better, but fallback if needed
+        // Tunggu sampai video siap (ready), lalu langsung seek tanpa nunggu play
+        plyrPlayer.once('ready', () => {
+            if (startTime > 0) {
+                const v = document.querySelector('video');
+                if (v) v.currentTime = startTime;
+            }
         });
+
+        // Update t= di URL setiap detik agar tidak hilang
+        let lastUrlUpdateSec = -1;
+        plyrPlayer.on('timeupdate', () => {
+            const v = document.querySelector('video');
+            if (v && !v.paused) {
+                const curSec = Math.floor(v.currentTime);
+                if (curSec !== lastUrlUpdateSec) {
+                    lastUrlUpdateSec = curSec;
+                    const url = new URL(window.location);
+                    url.searchParams.set('t', curSec);
+                    window.history.replaceState({}, '', url);
+                }
+            }
+        });
+
+        plyrPlayer.play().catch(() => { });
 
         saveToHistory(video);
         currentIndex = currentPlaylist.findIndex(v => v.id === video.id);

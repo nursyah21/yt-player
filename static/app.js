@@ -338,6 +338,18 @@ window.deleteHistoryQuery = async (event, query) => {
 };
 
 function handleSearchKeydown(e) {
+    if (e.key === 'Enter') {
+        const $items = $('.suggestion-item');
+        if ($('#suggestionsDropdown').is(':visible') && selectedIndex >= 0) {
+            e.preventDefault();
+            selectSuggestion($items.eq(selectedIndex).find('span').text());
+        } else {
+            $('#suggestionsDropdown').hide();
+            searchVideos();
+        }
+        return;
+    }
+
     const $items = $('.suggestion-item');
     if ($('#suggestionsDropdown').is(':visible') && $items.length) {
         if (e.key === 'ArrowDown') {
@@ -348,13 +360,7 @@ function handleSearchKeydown(e) {
             e.preventDefault();
             selectedIndex = (selectedIndex - 1 + $items.length) % $items.length;
             $items.removeClass('selected').eq(selectedIndex).addClass('selected');
-        } else if (e.key === 'Enter' && selectedIndex >= 0) {
-            e.preventDefault();
-            selectSuggestion($items.eq(selectedIndex).find('span').text());
         }
-    } else if (e.key === 'Enter') {
-        $('#suggestionsDropdown').hide();
-        searchVideos();
     }
 }
 

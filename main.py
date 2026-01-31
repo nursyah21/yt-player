@@ -134,6 +134,7 @@ async def extract_video(video_req: VideoRequest):
         'extract_flat': True, 
         'playliststart': offset,
         'playlistend': offset + limit - 1,
+        'ignoreerrors': True, # Lanjutkan jika ada video yang error dalam list
     }
     
     try:
@@ -141,6 +142,10 @@ async def extract_video(video_req: VideoRequest):
             info = ydl.extract_info(search_query, download=False)
             results = []
             entries = info.get('entries', [info])
+            
+            # Fallback data dari playlist/channel jika video individual tidak punya uploader
+            base_uploader = info.get('uploader') or info.get('channel') or info.get('title')
+            base_channel_id = info.get('channel_id') or info.get('uploader_id') or (info.get('id') if 'channel' in info.get('webpage_url', '') else None)
 
             for entry in entries:
                 if entry:
@@ -151,7 +156,8 @@ async def extract_video(video_req: VideoRequest):
                     results.append({
                         "title": entry.get('title'),
                         "thumbnail": entry.get('thumbnails')[0]['url'] if entry.get('thumbnails') else entry.get('thumbnail'),
-                        "uploader": entry.get('uploader') or entry.get('channel'),
+                        "uploader": entry.get('uploader') or entry.get('channel') or base_uploader,
+                        "channel_id": entry.get('channel_id') or entry.get('uploader_id') or base_channel_id,
                         "duration": entry.get('duration'),
                         "id": video_id,
                         "views": entry.get('view_count', 0),
@@ -180,6 +186,7 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
                 "title": info.get('title'),
                 "thumbnail": info.get('thumbnail'),
                 "uploader": info.get('uploader') or info.get('channel'),
+                "channel_id": info.get('channel_id') or info.get('uploader_id'),
                 "duration": info.get('duration'),
                 "views": info.get('view_count', 0),
                 "is_offline": True

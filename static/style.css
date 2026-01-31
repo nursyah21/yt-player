@@ -267,9 +267,82 @@ body {
 }
 
 
+.player-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
 .aspect-video {
     background: #000;
     position: relative;
+    aspect-ratio: 16/9;
+}
+
+#playerContainer.full-view .player-content {
+    flex-direction: row;
+    /* Side by side in full view if enough space */
+}
+
+#playerContainer.full-view .aspect-video {
+    flex: 1;
+    aspect-ratio: auto !important;
+}
+
+/* 1. Max Width for Playlist in Full View */
+#playerContainer.full-view #playlistView {
+    width: 100%;
+    max-width: 400px;
+    /* Limit width as requested */
+    height: 100%;
+    max-height: none;
+    background: #080808;
+    border-left: 1px solid #222;
+    flex-shrink: 0;
+}
+
+/* Fallback for small screens in full view */
+@media (max-width: 900px) {
+    #playerContainer.full-view .player-content {
+        flex-direction: column;
+    }
+
+    #playerContainer.full-view #playlistView {
+        max-width: none;
+        height: 300px;
+    }
+}
+
+/* --- Plyr Customization & Fixes (Restored) --- */
+:root {
+    --plyr-color-main: #3b82f6;
+}
+
+.plyr__menu__container {
+    max-height: 280px;
+    overflow-y: auto !important;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#playerContainer.full-view .plyr__menu__container {
+    max-height: 450px;
+}
+
+/* Volume styling reverted to horizontal */
+.plyr__volume {
+    min-width: 60px;
+}
+
+.plyr__controls {
+    padding: 15px 20px !important;
+    background: linear-gradient(to top, rgba(0, 0, 0, 1), transparent) !important;
+    gap: 12px !important;
+}
+
+.plyr--video .plyr__control--overlaid {
+    background: rgba(59, 130, 246, 0.9) !important;
+    padding: 18px !important;
 }
 
 #playlistView {

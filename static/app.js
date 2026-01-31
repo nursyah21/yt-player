@@ -748,20 +748,18 @@ function backToPlaylists() {
 
 function togglePlaylist() {
     const $view = $('#playlistView');
-    const $playerArea = $('#playerContainer .aspect-video');
     const $btn = $('#playlistBtn');
 
     if ($view.is(':visible')) {
         $view.hide();
-        if ($('#playerContainer').hasClass('full-view')) $playerArea.show();
         $btn.removeClass('text-blue-500');
     } else {
         renderPlaylist();
         $view.show();
-        if ($('#playerContainer').hasClass('full-view')) $playerArea.hide();
         $btn.addClass('text-blue-500');
     }
 }
+
 
 function renderPlaylist() {
     const html = currentPlaylist.map((video, index) => {

@@ -313,6 +313,9 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
                 "is_offline": True, 
                 "status": "playing_offline",
                 "title": meta.get('title', 'Offline Video'),
+                "uploader": meta.get('uploader', 'Unknown Channel'),
+                "duration": meta.get('duration', 0),
+                "views": meta.get('views', 0),
                 "subtitles": final_subs
             }
         except Exception as e:
@@ -364,7 +367,10 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
                 "is_offline": False, 
                 "status": "fetching_to_offline",
                 "subtitles": subtitles,
-                "title": info.get('title')
+                "title": info.get('title'),
+                "uploader": video_info['uploader'],
+                "duration": video_info['duration'],
+                "views": video_info['views']
             }
     except Exception as e:
         print(f"CRITICAL: get_stream failed for {video_id}: {e}")
@@ -401,6 +407,10 @@ async def delete_offline(video_id: str):
 
 @app.post("/save_history")
 async def save_history(item: HistoryItem):
+    # Don't save if both duration and views are 0 (likely metadata failed to load)
+    if item.duration == 0 and item.views == 0:
+        return {"status": "ignored"}
+        
     try:
         with open(HISTORY_FILE, 'r+', encoding='utf-8') as f:
             history = json.load(f)
@@ -418,7 +428,10 @@ async def save_history(item: HistoryItem):
 async def list_history():
     try:
         with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
-            return {"results": json.load(f)}
+            data = json.load(f)
+            # Filter corrupt entries on the fly for extra safety
+            filtered = [h for h in data if not (h.get('duration') == 0 and h.get('views', 0) == 0)]
+            return {"results": filtered}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

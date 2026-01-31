@@ -470,10 +470,12 @@ async function playVideo(video, updateUrl = true) {
 
     const data = await Helper.fetchJSON(`/get_stream?video_id=${video.id}`);
     if (data?.stream_url) {
-        if (video.title === "Loading..." && data.title) {
-            video.title = data.title;
-            video.uploader = data.uploader;
-        }
+        // Update metadata from stream response (more accurate)
+        if (data.title) video.title = data.title;
+        if (data.uploader) video.uploader = data.uploader;
+        if (data.duration) video.duration = data.duration;
+        if (data.views) video.views = data.views;
+
         $title.text(video.title);
 
         const tracks = (data.subtitles || []).map(sub => ({

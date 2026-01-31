@@ -9,6 +9,7 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="/static/style.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
 </head>
@@ -175,7 +176,7 @@
                 </button>
                 <button onclick="toggleExpand()" class="text-gray-600 hover:text-white"><i id="expandIcon"
                         class="fas fa-expand-alt"></i></button>
-                <button onclick="closePlayer()" class="text-gray-600 hover:text-red-500"><i
+                <button id="closePlayerBtn" class="text-gray-600 hover:text-red-500"><i
                         class="fas fa-times"></i></button>
             </div>
         </div>
@@ -207,7 +208,7 @@
         </div>
     </div>
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
     <script src="/static/app.js"></script>
 </body>
 

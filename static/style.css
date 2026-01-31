@@ -212,6 +212,16 @@ body {
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+@media (max-width: 480px) {
+    #playerContainer:not(.full-view) {
+        width: calc(100% - 32px) !important;
+        left: 16px !important;
+        right: 16px !important;
+        bottom: 16px !important;
+    }
+}
+
+
 #playerContainer.full-view {
     top: 50% !important;
     left: 50% !important;
@@ -228,10 +238,38 @@ body {
     flex-direction: column;
 }
 
-#playerContainer.full-view video {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
+/* Plyr Customization */
+:root {
+    --plyr-color-main: #3b82f6;
+    /* Matching our blue theme */
+}
+
+.plyr--full-ui {
+    border-radius: 0;
+}
+
+#playerContainer.full-view .aspect-video {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: #000;
+    aspect-ratio: auto !important;
+    /* Mencegah overflow karena rasio tetap */
+}
+
+
+#playerContainer.full-view .plyr,
+#playerContainer.full-view .plyr__video-wrapper {
+    height: 100% !important;
+    width: 100% !important;
+    padding-bottom: 0 !important;
+}
+
+
+.aspect-video {
+    background: #000;
+    position: relative;
 }
 
 #playlistView {

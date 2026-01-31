@@ -45,12 +45,13 @@ app = FastAPI(lifespan=lifespan)
 # Folder penyimpanan
 CACHE_DIR = "cached_videos"
 META_DIR = os.path.join(CACHE_DIR, "metadata")
+SUB_DIR = os.path.join(CACHE_DIR, "subtitles")
 DATA_DIR = "server_data"
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 SEARCH_HISTORY_FILE = os.path.join(DATA_DIR, "search_history.json")
 PLAYLISTS_FILE = os.path.join(DATA_DIR, "playlists.json")
 
-for d in [CACHE_DIR, META_DIR, DATA_DIR]:
+for d in [CACHE_DIR, META_DIR, SUB_DIR, DATA_DIR]:
     if not os.path.exists(d):
         os.makedirs(d)
 
@@ -63,6 +64,7 @@ for f_path in [HISTORY_FILE, SEARCH_HISTORY_FILE, PLAYLISTS_FILE]:
 
 # Akses file offline
 app.mount("/offline", StaticFiles(directory=CACHE_DIR), name="offline")
+app.mount("/subs", StaticFiles(directory=SUB_DIR), name="subs")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.add_middleware(
@@ -99,11 +101,44 @@ async def get_index():
     with open("index.html", "r", encoding="utf-8") as f:
         return f.read()
 
+async def download_subs_local(video_id: str, subtitles_list: list):
+    """Downloads remote subtitle VTT files to local cache directory"""
+    local_subs = []
+    async with httpx.AsyncClient() as client:
+        for sub in subtitles_list:
+            try:
+                # filename format: videoID_lang_type.vtt
+                type_label = "manual" # Simplified for internal tracking
+                local_filename = f"{video_id}_{sub['lang']}_{type_label}.vtt"
+                local_path = os.path.join(SUB_DIR, local_filename)
+                
+                if not os.path.exists(local_path):
+                    resp = await client.get(sub["url"])
+                    if resp.status_code == 200:
+                        with open(local_path, "wb") as f:
+                            f.write(resp.content)
+                
+                if os.path.exists(local_path):
+                    local_subs.append({
+                        "lang": sub["lang"],
+                        "url": f"/subs/{local_filename}",
+                        "label": sub["label"]
+                    })
+            except Exception as e:
+                print(f"Failed to download sub {sub['lang']} for {video_id}: {e}")
+    return local_subs
+
 def download_video_and_meta(video_id: str, video_info: dict):
     base_name = os.path.join(CACHE_DIR, video_id)
     final_mp4 = base_name + ".mp4"
     meta_path = os.path.join(META_DIR, f"{video_id}.json")
     
+    # Pre-download subtitles if any in background
+    # Since this is a thread, we use a new event loop or sync version
+    if video_info.get("subtitles"):
+        # We'll handle this in refresh_meta_task which is more flexible
+        pass
+
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': base_name + ".%(ext)s",
@@ -175,29 +210,118 @@ async def extract_video(video_req: VideoRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+def extract_subtitles(info: dict):
+    """Helper to extract subtitles from yt-dlp info dict"""
+    subtitles = []
+    captions = info.get('subtitles', {})
+    auto_captions = info.get('automatic_captions', {})
+    
+    # Check Manual Subtitles first
+    for lang, lang_info in captions.items():
+        vtt_sub = next((s['url'] for s in lang_info if s.get('ext') == 'vtt'), None)
+        if vtt_sub:
+            subtitles.append({"lang": lang, "url": vtt_sub, "label": lang})
+    
+    # If no manual subs, check Auto-generated
+    if not subtitles:
+        for lang, lang_info in auto_captions.items():
+            vtt_sub = next((s['url'] for s in lang_info if s.get('ext') == 'vtt'), None)
+            if vtt_sub:
+                subtitles.append({"lang": lang, "url": vtt_sub, "label": lang})
+    
+    return subtitles
+
+async def refresh_meta_task(video_id: str, meta_path: str):
+    """Refreshes metadata (subtitles, views) and downloads subs locally"""
+    try:
+        print(f"Starting background metadata refresh for {video_id}...")
+        ydl_opts = {'format': 'best', 'quiet': True, 'writesubtitles': True, 'allsubtitles': True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # Pengecekan cepat metadata tanpa download video
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+            
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+            
+            remote_subs = extract_subtitles(info)
+            # Download subs locally
+            meta["subtitles"] = await download_subs_local(video_id, remote_subs)
+            meta["views"] = info.get('view_count', meta.get('views', 0))
+            if not meta.get('uploader') and info.get('uploader'):
+                meta["uploader"] = info.get('uploader')
+            
+            with open(meta_path, 'w', encoding='utf-8') as fw:
+                json.dump(meta, fw, ensure_ascii=False, indent=4)
+            print(f"Background metadata refresh COMPLETED for {video_id}")
+    except Exception as e:
+        print(f"Background refresh failed for {video_id}: {e}")
+
 @app.get("/get_stream")
 async def get_stream(video_id: str, background_tasks: BackgroundTasks):
     local_file = os.path.join(CACHE_DIR, f"{video_id}.mp4")
     meta_path = os.path.join(META_DIR, f"{video_id}.json")
     
+    # 1. Check if Offline
     if os.path.exists(local_file) and os.path.exists(meta_path):
         try:
             with open(meta_path, 'r', encoding='utf-8') as f:
                 meta = json.load(f)
-                return {
-                    "stream_url": f"/offline/{video_id}.mp4", 
-                    "is_offline": True, 
-                    "status": "playing_offline",
-                    "title": meta.get('title', 'Offline Video')
-                }
-        except:
+                
+            # TRIGGER ASYNC REFRESH if data is incomplete (no subs or 0 views)
+            if "subtitles" not in meta or meta.get("views", 0) == 0:
+                background_tasks.add_task(refresh_meta_task, video_id, meta_path)
+            
+            # Filter subs: Only keep those that actually exist on disk
+            final_subs = []
+            for s in meta.get('subtitles', []):
+                # Extra check for physical existence if it's a local path
+                if s['url'].startswith('/subs/'):
+                    file_part = s['url'].replace('/subs/', '')
+                    if os.path.exists(os.path.join(SUB_DIR, file_part)):
+                        final_subs.append(s)
+                else:
+                    # Remote subs (if background download hasn't finished yet/failed)
+                    # We might want to skip these as per user request to ensure cached only
+                    pass
+            
+            return {
+                "stream_url": f"/offline/{video_id}.mp4", 
+                "is_offline": True, 
+                "status": "playing_offline",
+                "title": meta.get('title', 'Offline Video'),
+                "subtitles": final_subs
+            }
+        except Exception as e:
             return {"stream_url": f"/offline/{video_id}.mp4", "is_offline": True, "status": "playing_offline"}
     
-    ydl_opts = {'format': 'best', 'quiet': True}
+    # 2. Online Stream & Download in Background
+    # format 'best' might sometimes fail to give direct URL, fallback to better options
+    ydl_opts = {
+        'format': 'best/bestvideo+bestaudio', 
+        'quiet': True, 
+        'no_warnings': True,
+        'writesubtitles': True, 
+        'allsubtitles': True
+    }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            print(f"Extracting online stream for {video_id}...")
             info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
             
+            # Subtitles check
+            subtitles = extract_subtitles(info)
+            
+            # Stream URL priority
+            stream_url = info.get('url')
+            if not stream_url and info.get('formats'):
+                # Try to find a playable format if 'url' is missing at top level
+                formats = [f for f in info['formats'] if f.get('url') and (f.get('acodec') != 'none' or f.get('vcodec') != 'none')]
+                if formats:
+                    stream_url = formats[-1]['url'] # Usually best format is at the end
+
+            if not stream_url:
+                raise Exception("Tidak dapat menemukan stream URL")
+
             video_info = {
                 "id": video_id,
                 "title": info.get('title'),
@@ -206,13 +330,21 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
                 "channel_id": info.get('channel_id') or info.get('uploader_id'),
                 "duration": info.get('duration'),
                 "views": info.get('view_count', 0),
-                "is_offline": True
+                "is_offline": True,
+                "subtitles": subtitles
             }
             
             threading.Thread(target=download_video_and_meta, args=(video_id, video_info), daemon=True).start()
-            return {"stream_url": info.get('url'), "is_offline": False, "status": "fetching_to_offline"}
+            return {
+                "stream_url": stream_url, 
+                "is_offline": False, 
+                "status": "fetching_to_offline",
+                "subtitles": subtitles,
+                "title": info.get('title')
+            }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"CRITICAL: get_stream failed for {video_id}: {e}")
+        raise HTTPException(status_code=400, detail=f"Gagal mengambil stream: {str(e)}")
 
 @app.get("/list_offline")
 async def list_offline():

@@ -17,6 +17,7 @@ let currentVideoObj = null;
 let pendingPlaylistVideo = null;
 let selectedIndex = -1;
 let suggestionDebounceTimer;
+let plyrPlayer = null;
 
 // --- Helpers ---
 const Helper = {
@@ -168,14 +169,18 @@ function setupEventListeners() {
         }
     });
 
-    // Spacebar to Play/Pause
+    // Spacebar to Play/Pause (Single Source of Truth)
     $(document).on('keydown', (e) => {
-        if (e.code === 'Space' && document.activeElement.id !== 'videoQuery' && $('#playerContainer').is(':visible')) {
+        const isInput = document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA';
+
+        if (e.code === 'Space' && !isInput && $('#playerContainer').is(':visible') && plyrPlayer) {
             e.preventDefault();
-            const player = $('#videoPlayer')[0];
-            player.paused ? player.play() : player.pause();
+            plyrPlayer.togglePlay();
         }
     });
+
+    // Close Player Button
+    $('#closePlayerBtn').on('click', closePlayer);
 }
 
 // --- Sidebar Logic ---
@@ -426,13 +431,27 @@ function searchChannel(event, channelId, uploaderName) {
 // --- Player ---
 async function playVideo(video, updateUrl = true) {
     const $container = $('#playerContainer');
-    const $player = $('#videoPlayer');
+    const $playerEl = $('#videoPlayer');
     const $title = $('#nowPlayingTitle');
 
     $container.show();
     $title.text("Connecting...");
-    $player.attr('src', '');
     currentVideoObj = video;
+
+    // Initialize Plyr if not exists
+    if (!plyrPlayer) {
+        plyrPlayer = new Plyr('#videoPlayer', {
+            controls: [
+                'play-large', 'play', 'progress', 'current-time', 'mute', 'volume',
+                'captions', 'settings', 'pip', 'airplay', 'fullscreen'
+            ],
+            settings: ['captions', 'quality', 'speed'],
+            invertTime: false,
+            tooltips: { controls: true, seek: true }
+        });
+
+        plyrPlayer.on('ended', () => playNext());
+    }
 
     if (updateUrl) {
         const url = new URL(window.location);
@@ -447,14 +466,28 @@ async function playVideo(video, updateUrl = true) {
             video.uploader = data.uploader;
         }
         $title.text(video.title);
-        $player.attr('src', data.stream_url);
-        $player[0].play().catch(() => {
-            const startOnInteraction = () => { $player[0].play(); document.removeEventListener('click', startOnInteraction); };
-            document.addEventListener('click', startOnInteraction);
+
+        const tracks = (data.subtitles || []).map(sub => ({
+            kind: 'subtitles',
+            label: sub.label,
+            srclang: sub.lang,
+            src: sub.url,
+            default: sub.lang === 'id' || sub.lang === 'en'
+        }));
+
+        plyrPlayer.source = {
+            type: 'video',
+            title: video.title,
+            sources: [{ src: data.stream_url, type: 'video/mp4' }],
+            tracks: tracks
+        };
+
+        plyrPlayer.play().catch(() => {
+            // Plyr handles interaction better, but fallback if needed
         });
+
         saveToHistory(video);
         currentIndex = currentPlaylist.findIndex(v => v.id === video.id);
-        $player[0].onended = () => playNext();
         if ($('#playlistView').is(':visible')) renderPlaylist();
     } else {
         alert("Gagal memutar video.");
@@ -491,15 +524,22 @@ function toggleExpand() {
 }
 
 function closePlayer() {
-    $('#videoPlayer')[0].pause();
+    if (plyrPlayer) {
+        plyrPlayer.stop();
+    } else {
+        $('#videoPlayer')[0].pause();
+    }
+
     $('#playerContainer').hide();
     if (isExpanded) toggleExpand();
+
     const url = new URL(window.location);
     if (url.searchParams.has('v')) {
         url.searchParams.delete('v');
         window.history.pushState({}, '', url);
     }
 }
+
 
 // --- History & Offline ---
 async function saveToHistory(video) {

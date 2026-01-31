@@ -174,7 +174,17 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
     meta_path = os.path.join(META_DIR, f"{video_id}.json")
     
     if os.path.exists(local_file) and os.path.exists(meta_path):
-        return {"stream_url": f"/offline/{video_id}.mp4", "is_offline": True, "status": "playing_offline"}
+        try:
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+                return {
+                    "stream_url": f"/offline/{video_id}.mp4", 
+                    "is_offline": True, 
+                    "status": "playing_offline",
+                    "title": meta.get('title', 'Offline Video')
+                }
+        except:
+            return {"stream_url": f"/offline/{video_id}.mp4", "is_offline": True, "status": "playing_offline"}
     
     ydl_opts = {'format': 'best', 'quiet': True}
     try:

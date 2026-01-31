@@ -210,6 +210,27 @@ async def extract_video(video_req: VideoRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+def get_lang_name(lang_code: str):
+    """Converts ISO language codes to readable names and cleans labels"""
+    mapping = {
+        'id': 'Indonesia', 'en': 'English', 'ja': 'Japanese', 'ko': 'Korean',
+        'zh': 'Chinese', 'zh-Hans': 'Chinese (Simplified)', 'zh-Hant': 'Chinese (Traditional)',
+        'zh-TW': 'Chinese (Taiwan)', 'zh-HK': 'Chinese (Hong Kong)',
+        'fr': 'French', 'es': 'Spanish', 'de': 'German', 'ru': 'Russian',
+        'it': 'Italian', 'pt': 'Portuguese', 'vi': 'Vietnamese', 'th': 'Thai',
+        'tr': 'Turkish', 'ar': 'Arabic', 'hi': 'Hindi', 'ms': 'Malay',
+        'nl': 'Dutch', 'pl': 'Polish', 'sv': 'Swedish', 'da': 'Danish',
+        'fi': 'Finnish', 'no': 'Norwegian', 'cs': 'Czech', 'el': 'Greek',
+        'hu': 'Hungarian', 'ro': 'Romanian', 'sk': 'Slovak', 'uk': 'Ukrainian'
+    }
+    # Clean code: 'en-US' -> 'en' for mapping backup
+    clean_code = lang_code.split(' ')[0].split('-')[0].lower()
+    name = mapping.get(lang_code, mapping.get(clean_code, lang_code))
+    # Final cleanup to ensure no "(Manual)" or similar tags remain
+    for tag in ["(Manual)", "(Auto)", "[auto]", "manual"]:
+        name = name.replace(tag, "").strip()
+    return name
+
 def extract_subtitles(info: dict):
     """Helper to extract subtitles from yt-dlp info dict"""
     subtitles = []
@@ -220,14 +241,14 @@ def extract_subtitles(info: dict):
     for lang, lang_info in captions.items():
         vtt_sub = next((s['url'] for s in lang_info if s.get('ext') == 'vtt'), None)
         if vtt_sub:
-            subtitles.append({"lang": lang, "url": vtt_sub, "label": lang})
+            subtitles.append({"lang": lang, "url": vtt_sub, "label": get_lang_name(lang)})
     
     # If no manual subs, check Auto-generated
     if not subtitles:
         for lang, lang_info in auto_captions.items():
             vtt_sub = next((s['url'] for s in lang_info if s.get('ext') == 'vtt'), None)
             if vtt_sub:
-                subtitles.append({"lang": lang, "url": vtt_sub, "label": lang})
+                subtitles.append({"lang": lang, "url": vtt_sub, "label": get_lang_name(lang)})
     
     return subtitles
 
@@ -271,9 +292,12 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
             if "subtitles" not in meta or meta.get("views", 0) == 0:
                 background_tasks.add_task(refresh_meta_task, video_id, meta_path)
             
-            # Filter subs: Only keep those that actually exist on disk
+            # Filter subs: Only keep those that actually exist on disk, and clean labels
             final_subs = []
             for s in meta.get('subtitles', []):
+                # Clean label on the fly for old metadata compatibility
+                s['label'] = get_lang_name(s['label'] if ' ' not in s['label'] else s['lang'])
+                
                 # Extra check for physical existence if it's a local path
                 if s['url'].startswith('/subs/'):
                     file_part = s['url'].replace('/subs/', '')

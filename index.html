@@ -436,8 +436,45 @@
             }
         }
 
+        // Routing Logic
+        async function handleRouting() {
+            const params = new URLSearchParams(window.location.search);
+            const page = params.get('page');
+            const q = params.get('q');
+            const uploader = params.get('uploader');
+            const v = params.get('v');
+
+            if (v) {
+                // Jika sedang memutar video langsung dari URL
+                try {
+                    const res = await fetch(`/get_stream?video_id=${v}`);
+                    const data = await res.json();
+                    if (data.stream_url) {
+                        // Kita butuh objek video minimal untuk playVideo
+                        // Kita bisa simulasi atau panggil playVideo dengan data seadanya
+                        const videoObj = { id: v, title: "Loading...", thumbnail: "" };
+                        playVideo(videoObj, false);
+                    }
+                } catch (e) { console.error("Gagal load video dari URL", e); }
+            }
+
+            if (q) {
+                document.getElementById('videoQuery').value = q;
+                searchVideos(q, uploader, false);
+            } else if (page) {
+                showSection(page, null, false);
+            } else if (!v) {
+                showSection('home', null, false);
+            }
+        }
+
+        window.addEventListener('popstate', handleRouting);
+
         // Call init on load
-        window.addEventListener('load', initSidebar);
+        window.addEventListener('load', () => {
+            initSidebar();
+            handleRouting();
+        });
         // Handle window resize
         window.addEventListener('resize', () => {
             const isSmallScreen = window.innerWidth <= 780;
@@ -451,10 +488,15 @@
             }
         });
 
-        function showSection(sectionId, element) {
+        function showSection(sectionId, element, updateUrl = true) {
             activeSection = sectionId;
             document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
-            if (element) element.classList.add('active');
+
+            // Sync active class if element not provided (e.g. from routing)
+            const targetElement = element || Array.from(document.querySelectorAll('.sidebar-item')).find(el =>
+                el.getAttribute('onclick')?.includes(`'${sectionId}'`)
+            );
+            if (targetElement) targetElement.classList.add('active');
 
             document.getElementById('homeSection').classList.add('hidden-section');
             document.getElementById('historySection').classList.add('hidden-section');
@@ -467,13 +509,22 @@
             if (sectionId === 'history') loadHistory();
             if (sectionId === 'offline') loadOffline();
 
+            // Sync URL
+            if (updateUrl) {
+                const url = new URL(window.location);
+                url.searchParams.set('page', sectionId);
+                url.searchParams.delete('q');
+                url.searchParams.delete('uploader');
+                window.history.pushState({}, '', url);
+            }
+
             // Auto-hide sidebar on mobile after choosing a section
             if (window.innerWidth <= 780 && isSidebarOpen) {
                 toggleSidebar();
             }
         }
 
-        async function searchVideos(customQuery = null, displayName = null) {
+        async function searchVideos(customQuery = null, displayName = null, updateUrl = true) {
             const query = customQuery || document.getElementById('videoQuery').value;
             if (displayName) document.getElementById('videoQuery').value = displayName;
 
@@ -481,6 +532,15 @@
             const loading = document.getElementById('loading');
 
             if (!query || isFetching) return;
+
+            // Sync URL
+            if (updateUrl) {
+                const url = new URL(window.location);
+                url.searchParams.set('q', query);
+                if (displayName) url.searchParams.set('uploader', displayName);
+                url.searchParams.delete('page');
+                window.history.pushState({}, '', url);
+            }
 
             currentQuery = query;
             currentOffset = 1;
@@ -645,7 +705,7 @@
             `;
         }
 
-        async function playVideo(video) {
+        async function playVideo(video, updateUrl = true) {
             const container = document.getElementById('playerContainer');
             const player = document.getElementById('videoPlayer');
             const titleLabel = document.getElementById('nowPlayingTitle');
@@ -654,11 +714,18 @@
             titleLabel.innerText = "Connecting...";
             player.src = "";
 
+            // Sync URL
+            if (updateUrl) {
+                const url = new URL(window.location);
+                url.searchParams.set('v', video.id);
+                window.history.pushState({}, '', url);
+            }
+
             try {
                 const res = await fetch(`/get_stream?video_id=${video.id}`);
                 const data = await res.json();
                 if (data.stream_url) {
-                    titleLabel.innerText = video.title;
+                    titleLabel.innerText = video.title === "Loading..." && data.title ? data.title : video.title;
                     player.src = data.stream_url;
                     player.play();
                     saveToHistory(video);
@@ -770,6 +837,13 @@
             player.pause();
             document.getElementById('playerContainer').style.display = 'none';
             if (isExpanded) toggleExpand(); // Reset status jika sedang maximize
+
+            // Remove 'v' parameter from URL
+            const url = new URL(window.location);
+            if (url.searchParams.has('v')) {
+                url.searchParams.delete('v');
+                window.history.pushState({}, '', url);
+            }
         }
 
         // --- SUGGESTIONS & SEARCH HISTORY LOGIC ---

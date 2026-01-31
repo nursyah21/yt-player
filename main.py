@@ -10,8 +10,37 @@ import shutil
 import threading
 import httpx
 from datetime import datetime
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+def get_ips():
+    import socket
+    local_ip = "Unknown"
+    
+    # Get Network IP
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except:
+        pass
+    return local_ip
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    local_ip = get_ips()
+    port = 8000 # Default port
+    
+    print("\n" + "="*50)
+    print("   YT-STUDIO - SERVER RUNNING")
+    print("="*50)
+    print(f"  > Localhost  : http://localhost:{port}")
+    if local_ip != "Unknown":
+        print(f"  > Network IP : http://{local_ip}:{port}")
+    print("="*50 + "\n")
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 # Folder penyimpanan
 CACHE_DIR = "cached_videos"

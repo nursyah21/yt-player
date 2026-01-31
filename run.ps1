@@ -6,6 +6,5 @@ if (Test-Path ".\.venv\Scripts\Activate.ps1") {
     exit
 }
 
-# 2. Jalankan Server Langsung
-# Write-Host "--- Menjalankan Server (Fast Mode) ---" -ForegroundColor Green
+# 2. Jalankan Server
 uvicorn main:app --reload --host 0.0.0.0 --port 8000

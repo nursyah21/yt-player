@@ -145,27 +145,49 @@
             }
         }
 
-        /* Player */
+        /* Player Overlay Backdrop */
+        #playerBackdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 999;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        #playerBackdrop.show {
+            display: block;
+            opacity: 1;
+        }
+
         #playerContainer {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 400px;
-            background: #000;
-            border: 1px solid #222;
+            bottom: 24px;
+            right: 24px;
+            width: 380px;
+            background: #111;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 12px;
             z-index: 1000;
             display: none;
             overflow: hidden;
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         #playerContainer.full-view {
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            bottom: 50% !important;
+            right: 50% !important;
+            transform: translate(50%, 50%);
             width: 90%;
-            max-width: 1000px;
+            max-width: 1200px;
+            border-color: rgba(59, 130, 246, 0.5);
+            box-shadow: 0 0 100px rgba(0, 0, 0, 1);
         }
 
         /* Sidebar Styles */
@@ -235,6 +257,9 @@
 </head>
 
 <body class="pb-10">
+
+    <div id="sidebarOverlay" onclick="toggleSidebar()"
+        class="fixed inset-0 bg-black/50 z-30 hidden opacity-0 transition-opacity duration-300"></div>
 
     <nav class="fixed top-0 w-full bg-black backdrop-blur-md z-50 px-6 h-16 flex items-center justify-between ">
         <div class="flex items-center gap-4">
@@ -345,6 +370,7 @@
         </section>
     </main>
 
+    <div id="playerBackdrop" onclick="toggleExpand()"></div>
     <div id="playerContainer">
         <div class="flex items-center justify-between px-4 py-2 bg-[#111]">
             <span id="nowPlayingTitle"
@@ -385,6 +411,7 @@
         function applySidebarState() {
             const sidebar = document.getElementById('sidebar');
             const mainContent = document.getElementById('mainContent');
+            const overlay = document.getElementById('sidebarOverlay');
             const isSmallScreen = window.innerWidth <= 780;
 
             if (isSidebarOpen) {
@@ -394,12 +421,16 @@
                 }
                 if (isSmallScreen) {
                     sidebar.classList.add('show-mobile');
+                    overlay.classList.remove('hidden');
+                    setTimeout(() => overlay.classList.add('opacity-100'), 10);
                 }
             } else {
                 sidebar.style.transform = 'translateX(-240px)';
                 mainContent.classList.add('full-width');
                 if (isSmallScreen) {
                     sidebar.classList.remove('show-mobile');
+                    overlay.classList.remove('opacity-100');
+                    setTimeout(() => overlay.classList.add('hidden'), 300);
                 }
             }
         }
@@ -434,6 +465,11 @@
 
             if (sectionId === 'history') loadHistory();
             if (sectionId === 'offline') loadOffline();
+
+            // Auto-hide sidebar on mobile after choosing a section
+            if (window.innerWidth <= 780 && isSidebarOpen) {
+                toggleSidebar();
+            }
         }
 
         async function searchVideos() {
@@ -698,15 +734,30 @@
 
         function toggleExpand() {
             const container = document.getElementById('playerContainer');
+            const backdrop = document.getElementById('playerBackdrop');
             const icon = document.getElementById('expandIcon');
             isExpanded = !isExpanded;
-            isExpanded ? container.classList.add('full-view') : container.classList.remove('full-view');
+
+            if (isExpanded) {
+                container.classList.add('full-view');
+                backdrop.style.display = 'block';
+                setTimeout(() => backdrop.classList.add('show'), 10);
+                icon.className = 'fas fa-compress-alt';
+                document.body.style.overflow = 'hidden'; // Kunci scroll page saat maximize
+            } else {
+                container.classList.remove('full-view');
+                backdrop.classList.remove('show');
+                setTimeout(() => backdrop.style.display = 'none', 300);
+                icon.className = 'fas fa-expand-alt';
+                document.body.style.overflow = 'auto'; // Kembalikan scroll
+            }
         }
 
         function closePlayer() {
             const player = document.getElementById('videoPlayer');
             player.pause();
             document.getElementById('playerContainer').style.display = 'none';
+            if (isExpanded) toggleExpand(); // Reset status jika sedang maximize
         }
 
         // --- SUGGESTIONS & SEARCH HISTORY LOGIC ---

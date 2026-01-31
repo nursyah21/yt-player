@@ -341,7 +341,6 @@ body {
 #playerContainer.full-view .aspect-video {
     flex: 1;
     height: 100%;
-    aspect-ratio: auto !important;
 }
 
 #playerContainer.full-view #playlistView {
@@ -349,8 +348,8 @@ body {
     height: 100%;
     border-left: 1px solid rgba(255, 255, 255, 0.05);
     border-top: none;
-    display: block !important;
-    /* Force show in full view */
+    background: #080808;
+    flex-shrink: 0;
 }
 
 @media (max-width: 900px) {

@@ -635,7 +635,18 @@ async function deleteOfflineItem(event, videoId) {
 // --- Playlists ---
 function updatePlaylist(videos, append = false) {
     currentPlaylist = append ? [...currentPlaylist, ...videos] : [...videos];
-    if ($('#playlistView').is(':visible')) renderPlaylist();
+
+    const isFullView = $('#playerContainer').hasClass('full-view');
+    const $view = $('#playlistView');
+
+    // Auto-show and render playlist if in full view and has items
+    if (isFullView && currentPlaylist.length > 0) {
+        $view.show();
+        $('#playlistBtn').addClass('text-blue-500');
+        renderPlaylist();
+    } else if ($view.is(':visible')) {
+        renderPlaylist();
+    }
 }
 
 async function createPlaylistFromUI() {

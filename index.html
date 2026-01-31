@@ -39,7 +39,6 @@
 
         /* Video Card */
         .video-card {
-            cursor: pointer;
             transition: 0.2s;
         }
 
@@ -51,9 +50,6 @@
             overflow: hidden;
         }
 
-        .video-card:hover h3 {
-            color: #fff;
-        }
 
         /* Animasi Loading Shimmer */
         .shimmer {
@@ -309,19 +305,34 @@
             }
         }
 
+        function searchChannel(event, name) {
+            event.stopPropagation();
+            const input = document.getElementById('videoQuery');
+            input.value = name;
+            searchVideos();
+        }
+
         function createVideoCard(video) {
             const videoData = JSON.stringify(video).replace(/"/g, '&quot;');
             return `
-                <div class="video-card" onclick="playVideo(${videoData})">
-                    <div class="thumbnail-box mb-3">
-                        <img src="${video.thumbnail}" class="w-full h-full object-cover">
+                <div class="video-card flex flex-col">
+                    <div class="thumbnail-box mb-3 cursor-pointer group" onclick="playVideo(${videoData})">
+                        <img src="${video.thumbnail}" class="w-full h-full object-cover transition-transform group-hover:scale-105">
                         <div class="absolute bottom-2 right-2 bg-black/90 text-[10px] font-bold px-1.5 py-0.5 rounded text-gray-400">
                             ${video.duration ? formatTime(video.duration) : '0:00'}
                         </div>
                     </div>
                     <div class="px-1">
-                        <h3 class="font-bold text-[14px] text-[#f1f1f1] leading-tight line-clamp-2 mb-1 transition">${video.title}</h3>
-                        <p class="text-[12px] hover:text-gray-400 transition cursor-default">${video.uploader}</p>
+                        <h3 class="font-bold text-[14px] text-[#f1f1f1] leading-tight line-clamp-2 mb-1 transition cursor-pointer hover:text-blue-400" 
+                            onclick="playVideo(${videoData})">
+                            ${video.title}
+                        </h3>
+                        <div class="flex">
+                            <span class="text-[12px] text-gray-500 hover:text-white transition cursor-pointer inline-block" 
+                               onclick="searchChannel(event, '${video.uploader.replace(/'/g, "\\'")}')">
+                               ${video.uploader}
+                            </span>
+                        </div>
                     </div>
                 </div>
             `;

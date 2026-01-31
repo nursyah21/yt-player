@@ -14,9 +14,17 @@ app = FastAPI()
 # Folder penyimpanan
 CACHE_DIR = "cached_videos"
 META_DIR = os.path.join(CACHE_DIR, "metadata")
-for d in [CACHE_DIR, META_DIR]:
+DATA_DIR = "server_data"
+HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
+
+for d in [CACHE_DIR, META_DIR, DATA_DIR]:
     if not os.path.exists(d):
         os.makedirs(d)
+
+# Initialize history file if not exists
+if not os.path.exists(HISTORY_FILE):
+    with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+        json.dump([], f)
 
 # Akses file offline
 app.mount("/offline", StaticFiles(directory=CACHE_DIR), name="offline")
@@ -32,6 +40,14 @@ class VideoRequest(BaseModel):
     query: str
     offset: int = 1
 
+class HistoryItem(BaseModel):
+    id: str
+    title: str
+    thumbnail: str
+    uploader: str
+    duration: int
+    is_offline: bool = False
+
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
     if not os.path.exists("index.html"):
@@ -40,24 +56,19 @@ async def get_index():
         return f.read()
 
 def download_video_and_meta(video_id: str, video_info: dict):
-    """Proses download di background. Setelah selesai baru buat metadata json."""
-    # Kita tidak menambahkan .mp4 atau .part secara manual pada outtmpl
-    # Kita biarkan yt-dlp yang menentukannya agar tidak ada double extension
     base_name = os.path.join(CACHE_DIR, video_id)
     final_mp4 = base_name + ".mp4"
     meta_path = os.path.join(META_DIR, f"{video_id}.json")
     
-    # yt-dlp akan mendownload ke base_name.mp4 secara default jika formatnya mp4
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': base_name + ".%(ext)s", # Gunakan formula ini agar yt-dlp yang handle extension
+        'outtmpl': base_name + ".%(ext)s",
         'quiet': True,
         'no_warnings': True,
         'merge_output_format': 'mp4',
     }
     
     try:
-        # Jika file sudah ada tapi metadata hilang, langsung buat metadata
         if os.path.exists(final_mp4):
             with open(meta_path, 'w', encoding='utf-8') as f:
                 json.dump(video_info, f, ensure_ascii=False, indent=4)
@@ -65,13 +76,9 @@ def download_video_and_meta(video_id: str, video_info: dict):
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
-            
-            # Setelah download sukses, simpan metadata
-            # Metadata inilah yang jadi penanda bahwa video siap ditonton offline
             if os.path.exists(final_mp4):
                 with open(meta_path, 'w', encoding='utf-8') as f:
                     json.dump(video_info, f, ensure_ascii=False, indent=4)
-                print(f"Berhasil fetch offline: {video_id}")
     except Exception as e:
         print(f"Background task gagal untuk {video_id}: {e}")
 
@@ -101,7 +108,6 @@ async def extract_video(video_req: VideoRequest):
             for entry in entries:
                 if entry:
                     video_id = entry.get('id')
-                    # Video dianggap offline HANYA jika .mp4 DAN .json sudah ada
                     is_ready = os.path.exists(os.path.join(CACHE_DIR, f"{video_id}.mp4")) and \
                                os.path.exists(os.path.join(META_DIR, f"{video_id}.json"))
                     
@@ -124,11 +130,9 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
     local_file = os.path.join(CACHE_DIR, f"{video_id}.mp4")
     meta_path = os.path.join(META_DIR, f"{video_id}.json")
     
-    # Jika sudah lengkap, putar offline
     if os.path.exists(local_file) and os.path.exists(meta_path):
         return {"stream_url": f"/offline/{video_id}.mp4", "is_offline": True, "status": "playing_offline"}
     
-    # Jika belum, ambil stream remote dan trigger download di background
     ydl_opts = {'format': 'best', 'quiet': True}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -144,7 +148,6 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
             }
             
             threading.Thread(target=download_video_and_meta, args=(video_id, video_info), daemon=True).start()
-            
             return {"stream_url": info.get('url'), "is_offline": False, "status": "fetching_to_offline"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -167,7 +170,6 @@ async def list_offline():
 @app.delete("/delete_offline/{video_id}")
 async def delete_offline(video_id: str):
     try:
-        # Bersihkan file mp4, metadata, dan file part sisa yt-dlp jika ada
         target_files = [
             os.path.join(CACHE_DIR, f"{video_id}.mp4"),
             os.path.join(CACHE_DIR, f"{video_id}.mp4.part"),
@@ -175,6 +177,54 @@ async def delete_offline(video_id: str):
         ]
         for p in target_files:
             if os.path.exists(p): os.remove(p)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/save_history")
+async def save_history(item: HistoryItem):
+    try:
+        with open(HISTORY_FILE, 'r+', encoding='utf-8') as f:
+            history = json.load(f)
+            # Remove existing entry of the same video
+            history = [h for h in history if h['id'] != item.id]
+            # Add to the beginning
+            history.insert(0, item.dict())
+            # Keep only last 100
+            history = history[:100]
+            f.seek(0)
+            json.dump(history, f, ensure_ascii=False, indent=4)
+            f.truncate()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/list_history")
+async def list_history():
+    try:
+        with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+            return {"results": json.load(f)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/delete_history/{video_id}")
+async def delete_history(video_id: str):
+    try:
+        with open(HISTORY_FILE, 'r+', encoding='utf-8') as f:
+            history = json.load(f)
+            history = [h for h in history if h['id'] != video_id]
+            f.seek(0)
+            json.dump(history, f, ensure_ascii=False, indent=4)
+            f.truncate()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/clear_history")
+async def clear_history():
+    try:
+        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump([], f)
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

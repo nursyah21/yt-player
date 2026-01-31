@@ -408,12 +408,11 @@
             searchVideos();
         }
 
-        function deleteHistoryItem(event, videoId) {
+        async function deleteHistoryItem(event, videoId) {
             event.stopPropagation();
-            let history = JSON.parse(localStorage.getItem('yt_studio_history_v2') || '[]');
-            history = history.filter(item => item.id !== videoId);
-            localStorage.setItem('yt_studio_history_v2', JSON.stringify(history));
-            loadHistory();
+            if (!confirm('Hapus dari histori?')) return;
+            const res = await fetch(`/delete_history/${videoId}`, { method: 'DELETE' });
+            if (res.ok) loadHistory();
         }
 
         async function deleteOfflineItem(event, videoId) {
@@ -521,32 +520,43 @@
             }
         }
 
-        function saveToHistory(video) {
-            let history = JSON.parse(localStorage.getItem('yt_studio_history_v2') || '[]');
-            history = history.filter(item => item.id !== video.id);
-            history.unshift(video);
-            if (history.length > 50) history.pop();
-            localStorage.setItem('yt_studio_history_v2', JSON.stringify(history));
-        }
-
-        function loadHistory() {
-            const grid = document.getElementById('historyGrid');
-            const empty = document.getElementById('historyEmpty');
-            const history = JSON.parse(localStorage.getItem('yt_studio_history_v2') || '[]');
-
-            if (history.length === 0) {
-                grid.innerHTML = '';
-                empty.classList.remove('hidden');
-            } else {
-                empty.classList.add('hidden');
-                grid.innerHTML = history.map(video => createVideoCard(video, 'history')).join('');
+        async function saveToHistory(video) {
+            try {
+                await fetch('/save_history', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(video)
+                });
+            } catch (err) {
+                console.error("Gagal menyimpan histori ke server:", err);
             }
         }
 
-        function clearHistory() {
-            if (confirm('Bersihkan semua histori?')) {
-                localStorage.setItem('yt_studio_history_v2', '[]');
-                loadHistory();
+        async function loadHistory() {
+            const grid = document.getElementById('historyGrid');
+            const empty = document.getElementById('historyEmpty');
+            grid.innerHTML = '<div class="col-span-full text-center py-20 opacity-30">Memuat histori...</div>';
+
+            try {
+                const res = await fetch('/list_history');
+                const data = await res.json();
+
+                if (data.results.length === 0) {
+                    grid.innerHTML = '';
+                    empty.classList.remove('hidden');
+                } else {
+                    empty.classList.add('hidden');
+                    grid.innerHTML = data.results.map(video => createVideoCard(video, 'history')).join('');
+                }
+            } catch (err) {
+                grid.innerHTML = '<div class="col-span-full text-center py-20 text-red-500">Gagal memuat histori.</div>';
+            }
+        }
+
+        async function clearHistory() {
+            if (confirm('Bersihkan semua histori dari server?')) {
+                const res = await fetch('/clear_history', { method: 'POST' });
+                if (res.ok) loadHistory();
             }
         }
 

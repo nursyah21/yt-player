@@ -103,13 +103,65 @@
             width: 90%;
             max-width: 1000px;
         }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 240px;
+            background-color: #0f0f0f;
+            height: calc(100vh - 64px);
+            position: fixed;
+            top: 64px;
+            left: 0;
+            padding: 12px;
+            z-index: 40;
+            border-right: 1px solid #222;
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: #f1f1f1;
+            transition: 0.2s;
+        }
+
+        .sidebar-item:hover {
+            background-color: #1a1a1a;
+        }
+
+        .sidebar-item.active {
+            background-color: #2a2a2a;
+            font-weight: 700;
+        }
+
+        .main-content {
+            margin-left: 240px;
+            transition: margin-left 0.3s ease;
+        }
+
+        .main-content.full-width {
+            margin-left: 0;
+        }
+
+        .hidden-section {
+            display: none !important;
+        }
     </style>
 </head>
 
 <body class="pb-10">
 
-    <nav class="fixed top-0 w-full bg-[#0f0f0f]/95 backdrop-blur-md z-50 px-6 h-16 flex items-center justify-between ">
-        <div class="logo-text text-2xl">VIDEO</div>
+    <nav class="fixed top-0 w-full bg-black backdrop-blur-md z-50 px-6 h-16 flex items-center justify-between ">
+        <div class="flex items-center gap-4">
+            <button onclick="toggleSidebar()" class="text-gray-400 hover:text-white p-2">
+                <i class="fas fa-bars text-xl"></i>
+            </button>
+            <div class="logo-text text-2xl cursor-pointer" onclick="showSection('home')">VIDEO</div>
+        </div>
 
         <div class="search-container">
             <input type="text" id="videoQuery" placeholder="Cari video..."
@@ -122,26 +174,62 @@
         <div class="w-16"></div>
     </nav>
 
-    <main class="mt-24 max-w-[1400px] mx-auto px-6">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-item active" onclick="showSection('home', this)">
+            <i class="fas fa-home"></i>
+            <span>Beranda</span>
+        </div>
+        <div class="sidebar-item" onclick="showSection('history', this)">
+            <i class="fas fa-history"></i>
+            <span>Histori</span>
+        </div>
+    </aside>
 
-        <div id="loading" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            <script>
-                for (let i = 0; i < 8; i++) {
-                    document.write(`
-                        <div class="space-y-3">
-                            <div class="shimmer aspect-video"></div>
-                            <div class="space-y-2">
-                                <div class="shimmer h-4 w-full"></div>
-                                <div class="shimmer h-3 w-2/3"></div>
+    <main id="mainContent" class="main-content mt-24 max-w-[1400px] px-6">
+        <!-- Results Section -->
+        <section id="homeSection">
+            <div id="loading" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <script>
+                    for (let i = 0; i < 8; i++) {
+                        document.write(`
+                            <div class="space-y-3">
+                                <div class="shimmer aspect-video"></div>
+                                <div class="space-y-2">
+                                    <div class="shimmer h-4 w-full"></div>
+                                    <div class="shimmer h-3 w-2/3"></div>
+                                </div>
                             </div>
-                        </div>
-                    `);
-                }
-            </script>
-        </div>
+                        `);
+                    }
+                </script>
+            </div>
 
-        <div id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-10">
-        </div>
+            <div id="resultsGrid"
+                class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-10">
+                <div class="col-span-full text-center py-20 opacity-30">
+                    <i class="fas fa-play-circle text-6xl mb-4"></i>
+                    <p class="text-xl">Cari video untuk memulai</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- History Section -->
+        <section id="historySection" class="hidden-section">
+            <div class="flex justify-between items-center mb-10">
+                <h2 class="text-2xl font-bold text-white uppercase tracking-wider">Histori Tontonan</h2>
+                <button onclick="clearHistory()"
+                    class="text-red-500 hover:bg-red-500/10 px-4 py-2 rounded text-xs font-bold transition uppercase tracking-widest">
+                    Hapus Semua
+                </button>
+            </div>
+            <div id="historyGrid"
+                class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-10">
+            </div>
+            <div id="historyEmpty" class="hidden col-span-full text-center py-20 opacity-30">
+                <p>Belum ada histori tontonan.</p>
+            </div>
+        </section>
     </main>
 
     <div id="playerContainer">
@@ -162,6 +250,33 @@
 
     <script>
         let isExpanded = false;
+        let isSidebarOpen = true;
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('mainContent');
+            isSidebarOpen = !isSidebarOpen;
+
+            if (isSidebarOpen) {
+                sidebar.style.transform = 'translateX(0)';
+                mainContent.classList.remove('full-width');
+            } else {
+                sidebar.style.transform = 'translateX(-240px)';
+                mainContent.classList.add('full-width');
+            }
+        }
+
+        function showSection(sectionId, element) {
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+            if (element) element.classList.add('active');
+
+            document.getElementById('homeSection').classList.add('hidden-section');
+            document.getElementById('historySection').classList.add('hidden-section');
+
+            document.getElementById(sectionId + 'Section').classList.remove('hidden-section');
+
+            if (sectionId === 'history') loadHistory();
+        }
 
         async function searchVideos() {
             const query = document.getElementById('videoQuery').value;
@@ -170,6 +285,7 @@
 
             if (!query) return;
 
+            showSection('home');
             grid.innerHTML = '';
             loading.classList.remove('hidden');
 
@@ -183,20 +299,7 @@
 
                 if (response.ok) {
                     data.results.forEach(video => {
-                        grid.innerHTML += `
-                            <div class="video-card" onclick="playVideo('${video.id}', '${video.title.replace(/'/g, "\\'")}')">
-                                <div class="thumbnail-box mb-3">
-                                    <img src="${video.thumbnail}" class="w-full h-full object-cover">
-                                    <div class="absolute bottom-2 right-2 bg-black/90 text-[10px] font-bold px-1.5 py-0.5 rounded text-gray-400">
-                                        ${video.duration ? formatTime(video.duration) : '0:00'}
-                                    </div>
-                                </div>
-                                <div class="px-1">
-                                    <h3 class="font-bold text-[14px] text-[#f1f1f1] leading-tight line-clamp-2 mb-1 transition">${video.title}</h3>
-                                    <p class="text-[12px] hover:text-gray-400 transition cursor-default">${video.uploader}</p>
-                                </div>
-                            </div>
-                        `;
+                        grid.innerHTML += createVideoCard(video);
                     });
                 }
             } catch (err) {
@@ -206,7 +309,25 @@
             }
         }
 
-        async function playVideo(videoId, title) {
+        function createVideoCard(video) {
+            const videoData = JSON.stringify(video).replace(/"/g, '&quot;');
+            return `
+                <div class="video-card" onclick="playVideo(${videoData})">
+                    <div class="thumbnail-box mb-3">
+                        <img src="${video.thumbnail}" class="w-full h-full object-cover">
+                        <div class="absolute bottom-2 right-2 bg-black/90 text-[10px] font-bold px-1.5 py-0.5 rounded text-gray-400">
+                            ${video.duration ? formatTime(video.duration) : '0:00'}
+                        </div>
+                    </div>
+                    <div class="px-1">
+                        <h3 class="font-bold text-[14px] text-[#f1f1f1] leading-tight line-clamp-2 mb-1 transition">${video.title}</h3>
+                        <p class="text-[12px] hover:text-gray-400 transition cursor-default">${video.uploader}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function playVideo(video) {
             const container = document.getElementById('playerContainer');
             const player = document.getElementById('videoPlayer');
             const titleLabel = document.getElementById('nowPlayingTitle');
@@ -216,15 +337,45 @@
             player.src = "";
 
             try {
-                const res = await fetch(`/get_stream?video_id=${videoId}`);
+                const res = await fetch(`/get_stream?video_id=${video.id}`);
                 const data = await res.json();
                 if (data.stream_url) {
-                    titleLabel.innerText = title;
+                    titleLabel.innerText = video.title;
                     player.src = data.stream_url;
                     player.play();
+                    saveToHistory(video);
                 }
             } catch (err) {
                 alert("Gagal memutar video.");
+            }
+        }
+
+        function saveToHistory(video) {
+            let history = JSON.parse(localStorage.getItem('yt_studio_history_v2') || '[]');
+            history = history.filter(item => item.id !== video.id);
+            history.unshift(video);
+            if (history.length > 50) history.pop();
+            localStorage.setItem('yt_studio_history_v2', JSON.stringify(history));
+        }
+
+        function loadHistory() {
+            const grid = document.getElementById('historyGrid');
+            const empty = document.getElementById('historyEmpty');
+            const history = JSON.parse(localStorage.getItem('yt_studio_history_v2') || '[]');
+
+            if (history.length === 0) {
+                grid.innerHTML = '';
+                empty.classList.remove('hidden');
+            } else {
+                empty.classList.add('hidden');
+                grid.innerHTML = history.map(video => createVideoCard(video)).join('');
+            }
+        }
+
+        function clearHistory() {
+            if (confirm('Bersihkan semua histori?')) {
+                localStorage.setItem('yt_studio_history_v2', '[]');
+                loadHistory();
             }
         }
 

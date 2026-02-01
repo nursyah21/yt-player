@@ -10,5 +10,5 @@ if exist .venv\Scripts\activate.bat (
 )
 
 :: 2. Jalankan Server
-set RELOAD=true
+set RELOAD=false
 python main.py

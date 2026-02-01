@@ -46,6 +46,28 @@ SEARCH_HISTORY_FILE = os.path.join(DATA_DIR, "search_history.json")
 PLAYLISTS_FILE = os.path.join(DATA_DIR, "playlists.json")
 SUBSCRIPTIONS_FILE = os.path.join(DATA_DIR, "subscriptions.json")
 
+# 1. Global Cache for YouTube Info (LRU) to prevent slow re-fetching
+from functools import lru_cache
+import time
+
+# Simple Dictionary cache for YouTube Info (valid for 6 hours)
+YT_INFO_CACHE = {}
+CACHE_VALID_TIME = 6 * 3600 # 6 Hours
+
+def get_cached_info(video_id):
+    if video_id in YT_INFO_CACHE:
+        entry, timestamp = YT_INFO_CACHE[video_id]
+        if time.time() - timestamp < CACHE_VALID_TIME:
+            return entry
+    return None
+
+def set_cached_info(video_id, info):
+    YT_INFO_CACHE[video_id] = (info, time.time())
+    # Prune cache if too large
+    if len(YT_INFO_CACHE) > 500:
+        oldest = sorted(YT_INFO_CACHE.keys(), key=lambda k: YT_INFO_CACHE[k][1])[0]
+        del YT_INFO_CACHE[oldest]
+
 for d in [CACHE_DIR, META_DIR, SUB_DIR, THUMB_DIR, DATA_DIR]:
     if not os.path.exists(d):
         os.makedirs(d)
@@ -381,7 +403,7 @@ def extract_subtitles(info: dict):
 
 
 
-async def refresh_meta_task(video_id: str, meta_path: str):
+def refresh_meta_task(video_id: str, meta_path: str):
     """Refreshes metadata (subtitles, views, thumbnails) and downloads them locally"""
     try:
         ydl_opts = {'format': 'best', 'quiet': True, 'writesubtitles': True, 'allsubtitles': True}
@@ -391,8 +413,8 @@ async def refresh_meta_task(video_id: str, meta_path: str):
             with open(meta_path, 'r', encoding='utf-8') as f:
                 meta = json.load(f)
             
-            remote_subs = extract_subtitles(info)
-            meta["subtitles"] = await download_subs_local(video_id, remote_subs)
+            # extract_subtitles is already sync and takes care of downloading
+            meta["subtitles"] = extract_subtitles(info)
             meta["views"] = info.get('view_count', meta.get('views', 0))
             if not meta.get('channel_id') and info.get('channel_id'):
                 meta["channel_id"] = info.get('channel_id') or info.get('uploader_id')
@@ -400,13 +422,23 @@ async def refresh_meta_task(video_id: str, meta_path: str):
             remote_thumb = info.get('thumbnail') or meta.get('thumbnail_remote')
             if remote_thumb and remote_thumb.startswith('http'):
                 meta["thumbnail_remote"] = remote_thumb
-                local_url = await download_thumbnail_local(video_id, remote_thumb)
-                if local_url.startswith('/offline/'):
-                    meta["thumbnail"] = local_url
+                # Inline sync thumbnail download
+                try:
+                    with httpx.Client() as client:
+                        resp = client.get(remote_thumb)
+                        if resp.status_code == 200:
+                            ext = "webp" if ".webp" in remote_thumb else "jpg"
+                            local_filename = f"{video_id}.{ext}"
+                            local_path = os.path.join(THUMB_DIR, local_filename)
+                            with open(local_path, "wb") as f:
+                                f.write(resp.content)
+                            meta["thumbnail"] = f"/offline/thumbnails/{local_filename}"
+                except: pass
             
             with open(meta_path, 'w', encoding='utf-8') as fw:
                 json.dump(meta, fw, ensure_ascii=False, indent=4)
             
+            # Sync update of history/playlists
             try:
                 if os.path.exists(HISTORY_FILE):
                     with open(HISTORY_FILE, 'r+', encoding='utf-8') as f:
@@ -436,7 +468,7 @@ async def refresh_meta_task(video_id: str, meta_path: str):
         print(f"Background refresh failed for {video_id}: {e}")
 
 @app.get("/get_stream")
-async def get_stream(video_id: str, background_tasks: BackgroundTasks):
+def get_stream(video_id: str, background_tasks: BackgroundTasks):
     local_file = os.path.join(CACHE_DIR, f"{video_id}.mp4")
     meta_path = os.path.join(META_DIR, f"{video_id}.json")
     
@@ -469,107 +501,121 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
             "is_local": True
         }
 
-    # 3. IF OFFLINE: We still want to fetch online formats to allow quality switching
-    # BUT we prepare the local format first.
-    pass # Continue to section 4 to fetch unique_formats
+    # 3. IF OFFLINE: RETURN IMMEDIATELY (ULTRA FAST)
+    if local_format:
+        # Check if we have cached online formats to include them without waiting
+        cached_online = get_cached_info(video_id)
+        other_formats = []
+        if cached_online:
+            for f in cached_online.get('formats', []):
+                if f.get('url') and f.get('acodec') != 'none' and f.get('vcodec') != 'none':
+                    h = f.get('height') or 0
+                    if h != local_format['height']: # Don't duplicate local
+                        other_formats.append({
+                            "url": f['url'],
+                            "quality": f"{h}p ({format_size(f.get('filesize') or f.get('filesize_approx'))})",
+                            "height": h,
+                            "is_local": False
+                        })
+        
+        # Schedule meta refresh in background if we don't have cached info or data is old
+        if not cached_online or "subtitles" not in existing_meta or existing_meta.get("views", 0) == 0:
+            background_tasks.add_task(refresh_meta_task, video_id, meta_path)
 
-    # 4. IF ONLINE: Fetch from YouTube (Synchronous but necessary here)
-    ydl_opts = {'quiet': True, 'no_warnings': True, 'writesubtitles': True, 'allsubtitles': True}
-    unique_formats = []
-    online_info = {}
-    subtitles = []
+        return {
+            "stream_url": local_format['url'],
+            "formats": [local_format] + sorted(other_formats, key=lambda x: x['height'], reverse=True),
+            "is_offline": True,
+            "status": "playing",
+            "subtitles": [s for s in existing_meta.get('subtitles', []) if s.get('url', '').startswith('/subs/')],
+            "title": existing_meta.get('title', 'Unknown'),
+            "uploader": existing_meta.get('uploader', 'Unknown'),
+            "channel_id": existing_meta.get('channel_id'),
+            "duration": existing_meta.get('duration'),
+            "views": existing_meta.get('views', 0)
+        }
 
-    try:
-        # Execute yt-dlp in a thread pool to avoid blocking the main event loop
-        import asyncio
-        loop = asyncio.get_event_loop()
-        def extract():
+    # 4. IF ONLINE or NO CACHE: Fetch from YouTube (Synchronous but runs in thread pool)
+    online_info = get_cached_info(video_id)
+    if not online_info:
+        ydl_opts = {'quiet': True, 'no_warnings': True, 'writesubtitles': True, 'allsubtitles': True}
+        try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
-        
-        online_info = await loop.run_in_executor(None, extract)
-        subtitles = [] # Hide subtitles for online streams as requested
-        
-        # We still extract them for background download if needed
-        background_subtitles = extract_subtitles(online_info)
-        
-        available_formats = []
-        for f in online_info.get('formats', []):
-            if f.get('url') and f.get('acodec') != 'none' and f.get('vcodec') != 'none':
-                h = f.get('height') or 0
-                size_bytes = f.get('filesize') or f.get('filesize_approx')
-                size_str = format_size(size_bytes) if size_bytes else "Stream"
-                available_formats.append({
-                    "url": f['url'],
-                    "quality": f"{h}p ({size_str})",
-                    "height": h,
-                    "is_local": False
-                })
-        
-        available_formats.sort(key=lambda x: x['height'], reverse=True)
-        seen_heights = set()
-        for f in available_formats:
-            if f['height'] not in seen_heights:
-                unique_formats.append(f)
-                seen_heights.add(f['height'])
-
-    except Exception as e:
-        print(f"Could not fetch online formats: {e}")
-        # If we have local format, we can still proceed even if online fetch fails
-        if not local_format:
+                online_info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+                set_cached_info(video_id, online_info)
+        except Exception as e:
+            print(f"Could not fetch online formats: {e}")
             raise HTTPException(status_code=400, detail="Gagal mengambil aliran video")
 
-    # 5. Merge Local Format
-    if local_format:
-        # Remove equivalent online height to prefer local
-        unique_formats = [f for f in unique_formats if not (f['height'] == local_format['height'] and not f['is_local'])]
-        unique_formats.insert(0, local_format)
-
-    # 6. Final Data
-    video_info_to_save = {
-        "id": video_id, 
-        "title": online_info.get('title') or existing_meta.get('title', 'Unknown'),
-        "thumbnail": online_info.get('thumbnail') or existing_meta.get('thumbnail', ''),
-        "uploader": online_info.get('uploader') or online_info.get('channel') or existing_meta.get('uploader', 'Unknown'),
-        "channel_id": online_info.get('channel_id') or online_info.get('uploader_id') or existing_meta.get('channel_id'),
-        "duration": online_info.get('duration') or existing_meta.get('duration', 0),
-        "views": online_info.get('view_count', 0) or existing_meta.get('views', 0),
-        "is_offline": True, 
-        "subtitles": background_subtitles if 'background_subtitles' in locals() else existing_meta.get('subtitles', [])
-    }
+    # Process Info
+    subtitles = [] # Online play, hide subs as requested
     
-    # Trigger background download if not offline
-    if not local_format and video_id not in active_downloads:
-        active_downloads[video_id] = {'cancelled': False}
-        threading.Thread(target=download_video_and_meta, args=(video_id, video_info_to_save), daemon=True).start()
+    unique_formats = []
+    available_formats = []
+    for f in online_info.get('formats', []):
+        if f.get('url') and f.get('acodec') != 'none' and f.get('vcodec') != 'none':
+            h = f.get('height') or 0
+            size_bytes = f.get('filesize') or f.get('filesize_approx')
+            size_str = format_size(size_bytes) if size_bytes else "Stream"
+            available_formats.append({
+                "url": f['url'],
+                "quality": f"{h}p ({size_str})",
+                "height": h,
+                "is_local": False
+            })
+    
+    available_formats.sort(key=lambda x: x['height'], reverse=True)
+    seen_heights = set()
+    for f in available_formats:
+        if f['height'] not in seen_heights:
+            unique_formats.append(f)
+            seen_heights.add(f['height'])
 
-    # Final Subtitle Filter (ONLY local /subs/ if offline, otherwise empty as requested for online)
-    final_subs = []
-    if local_format:
-        # Load from metadata if possible
-        meta_subs = existing_meta.get('subtitles', [])
-        # Also check if we just fetched them background
-        if 'background_subtitles' in locals() and background_subtitles:
-            meta_subs = background_subtitles
-        
-        final_subs = [s for s in meta_subs if s.get('url', '').startswith('/subs/')]
+    # Fast return for online streaming
+    if video_id not in active_downloads:
+        # We pass a copy of info or just let the thread handle it
+        active_downloads[video_id] = {'cancelled': False}
+        def background_info_process():
+            try:
+                # This performs local VTT downloads, which can be slow
+                bg_subs = extract_subtitles(online_info)
+                video_info_to_save = {
+                    "id": video_id, 
+                    "title": online_info.get('title'),
+                    "thumbnail": online_info.get('thumbnail'),
+                    "uploader": online_info.get('uploader') or online_info.get('channel'),
+                    "channel_id": online_info.get('channel_id') or online_info.get('uploader_id'),
+                    "duration": online_info.get('duration'),
+                    "views": online_info.get('view_count', 0),
+                    "is_offline": True, 
+                    "subtitles": bg_subs
+                }
+                download_video_and_meta(video_id, video_info_to_save)
+            except Exception as e:
+                print(f"Background process error: {e}")
+            finally:
+                active_downloads.pop(video_id, None)
+
+        threading.Thread(target=background_info_process, daemon=True).start()
 
     return {
-        "stream_url": unique_formats[0]['url'], 
+        "stream_url": unique_formats[0]['url'],
         "formats": unique_formats,
-        "is_offline": bool(local_format), 
-        "status": "playing" if local_format else "fetching_to_offline",
-        "subtitles": final_subs,
-        "title": video_info_to_save['title'],
-        "uploader": video_info_to_save['uploader'],
-        "channel_id": video_info_to_save['channel_id'],
-        "duration": video_info_to_save['duration'],
-        "views": video_info_to_save['views']
+        "is_offline": False,
+        "status": "fetching_to_offline",
+        "subtitles": [],
+        "title": online_info.get('title'),
+        "uploader": online_info.get('uploader') or online_info.get('channel'),
+        "channel_id": online_info.get('channel_id'),
+        "duration": online_info.get('duration'),
+        "views": online_info.get('view_count', 0)
     }
+
+
 
 
 @app.get("/get_video_meta/{video_id}")
-async def get_video_meta(video_id: str):
+def get_video_meta(video_id: str):
     meta_path = os.path.join(META_DIR, f"{video_id}.json")
     if os.path.exists(meta_path):
         try:
@@ -578,7 +624,7 @@ async def get_video_meta(video_id: str):
     return {}
 
 @app.get("/list_offline")
-async def list_offline():
+def list_offline():
     videos = []
     if os.path.exists(META_DIR):
         for filename in sorted(os.listdir(META_DIR), reverse=True):
@@ -591,7 +637,7 @@ async def list_offline():
     return {"results": videos}
 
 @app.delete("/delete_offline/{video_id}")
-async def delete_offline(video_id: str):
+def delete_offline(video_id: str):
     try:
         for p in [os.path.join(CACHE_DIR, f"{video_id}.mp4"), os.path.join(CACHE_DIR, f"{video_id}.mp4.part"), os.path.join(META_DIR, f"{video_id}.json")]:
             if os.path.exists(p): os.remove(p)
@@ -599,19 +645,22 @@ async def delete_offline(video_id: str):
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/save_history")
-async def save_history(item: HistoryItem):
+def save_history(item: HistoryItem):
     if item.duration == 0 and item.views == 0: return {"status": "ignored"}
     try:
-        with open(HISTORY_FILE, 'r+', encoding='utf-8') as f:
-            history = json.load(f)
-            history = [h for h in history if h.get('id') != item.id]
-            history.insert(0, item.dict()); history = history[:100]
-            f.seek(0); json.dump(history, f, ensure_ascii=False, indent=4); f.truncate()
+        history = []
+        if os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+        history = [h for h in history if h.get('id') != item.id]
+        history.insert(0, item.dict()); history = history[:100]
+        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False, indent=4)
         return {"status": "success"}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/list_history")
-async def list_history():
+def list_history():
     try:
         with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -619,7 +668,7 @@ async def list_history():
     except: return {"results": []}
 
 @app.delete("/delete_history/{video_id}")
-async def delete_history(video_id: str):
+def delete_history(video_id: str):
     try:
         with open(HISTORY_FILE, 'r+', encoding='utf-8') as f:
             history = json.load(f); history = [h for h in history if h.get('id') != video_id]
@@ -628,7 +677,7 @@ async def delete_history(video_id: str):
     except: raise HTTPException(status_code=500)
 
 @app.post("/clear_history")
-async def clear_history():
+def clear_history():
     try:
         with open(HISTORY_FILE, 'w', encoding='utf-8') as f: json.dump([], f)
         return {"status": "success"}
@@ -644,13 +693,13 @@ async def get_suggestions(q: str):
     except: return {"suggestions": []}
 
 @app.get("/list_search_history")
-async def list_search_history():
+def list_search_history():
     try:
         with open(SEARCH_HISTORY_FILE, 'r', encoding='utf-8') as f: return {"results": json.load(f)}
     except: return {"results": []}
 
 @app.post("/save_search_history")
-async def save_search_history(req: SearchHistoryRequest):
+def save_search_history(req: SearchHistoryRequest):
     q = req.query.strip()
     if not q: return {"status": "ignored"}
     try:
@@ -662,7 +711,7 @@ async def save_search_history(req: SearchHistoryRequest):
     except: return {"status": "error"}
 
 @app.delete("/delete_search_history")
-async def delete_search_history(q: str):
+def delete_search_history(q: str):
     try:
         with open(SEARCH_HISTORY_FILE, 'r+', encoding='utf-8') as f:
             hist = json.load(f); hist = [h for h in hist if h != q]
@@ -671,13 +720,13 @@ async def delete_search_history(q: str):
     except: return {"status": "error"}
 
 @app.get("/list_playlists")
-async def list_playlists():
+def list_playlists():
     try:
         with open(PLAYLISTS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
     except: return {}
 
 @app.post("/add_to_playlist")
-async def add_to_playlist(req: PlaylistVideoRequest):
+def add_to_playlist(req: PlaylistVideoRequest):
     try:
         with open(PLAYLISTS_FILE, 'r+', encoding='utf-8') as f:
             pl = json.load(f); name = req.playlist_name.strip()
@@ -690,7 +739,7 @@ async def add_to_playlist(req: PlaylistVideoRequest):
     except Exception as e: raise HTTPException(status_code=500)
 
 @app.post("/update_playlist_meta")
-async def update_playlist_meta(req: PlaylistVideoRequest):
+def update_playlist_meta(req: PlaylistVideoRequest):
     try:
         with open(PLAYLISTS_FILE, 'r+', encoding='utf-8') as f:
             pl = json.load(f); name = req.playlist_name
@@ -706,7 +755,7 @@ async def update_playlist_meta(req: PlaylistVideoRequest):
     except: return {"status": "error"}
 
 @app.post("/update_playlist_channel_by_uploader")
-async def update_playlist_channel_by_uploader(data: dict):
+def update_playlist_channel_by_uploader(data: dict):
     try:
         name, up, cid = data.get("playlist_name"), data.get("uploader"), data.get("channel_id")
         if not all([name, up, cid]): return {"status": "ignored"}
@@ -723,13 +772,13 @@ async def update_playlist_channel_by_uploader(data: dict):
     except: return {"status": "error"}
 
 @app.get("/list_subscriptions")
-async def list_subscriptions():
+def list_subscriptions():
     try:
         with open(SUBSCRIPTIONS_FILE, 'r', encoding='utf-8') as f: return {"results": json.load(f)}
     except: return {"results": []}
 
 @app.post("/toggle_subscription")
-async def toggle_subscription(data: dict):
+def toggle_subscription(data: dict):
     try:
         with open(SUBSCRIPTIONS_FILE, 'r+', encoding='utf-8') as f:
             subs = json.load(f); idx = -1
@@ -744,7 +793,7 @@ async def toggle_subscription(data: dict):
     except: return {"status": "error"}
 
 @app.post("/create_playlist")
-async def create_playlist(data: dict):
+def create_playlist(data: dict):
     try:
         name = data.get("name", "").strip()
         if not name: raise HTTPException(status_code=400)
@@ -756,7 +805,7 @@ async def create_playlist(data: dict):
     except: raise HTTPException(status_code=500)
 
 @app.delete("/delete_from_playlist/{playlist_name}/{video_id}")
-async def delete_from_playlist(playlist_name: str, video_id: str):
+def delete_from_playlist(playlist_name: str, video_id: str):
     try:
         with open(PLAYLISTS_FILE, 'r+', encoding='utf-8') as f:
             pl = json.load(f)
@@ -767,7 +816,7 @@ async def delete_from_playlist(playlist_name: str, video_id: str):
     except: raise HTTPException(status_code=500)
 
 @app.delete("/delete_playlist/{playlist_name}")
-async def delete_playlist(playlist_name: str):
+def delete_playlist(playlist_name: str):
     try:
         with open(PLAYLISTS_FILE, 'r+', encoding='utf-8') as f:
             pl = json.load(f)

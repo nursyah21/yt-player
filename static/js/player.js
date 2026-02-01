@@ -105,11 +105,11 @@ function setupPlyr(data, video, startTime) {
         let sizeInfo = "";
         const localFmt = (data.formats || []).find(f => f.is_local);
         if (localFmt && localFmt.quality) {
-            const match = localFmt.quality.match(/-\s*([\d.]+\w+)/);
-            if (match) sizeInfo = match[1];
+            sizeInfo = localFmt.quality; // "Local (480p - 30.0MB)"
         }
 
-        $downloadBtn.attr('title', `Download MP4 ${sizeInfo ? '(' + sizeInfo + ')' : ''}`);
+        const btnText = sizeInfo ? sizeInfo : 'Download MP4';
+        $downloadBtn.attr('title', btnText);
         $downloadBtn.show().off('click').on('click', () => {
             const link = document.createElement('a');
             link.href = `/offline/${video.id}.mp4`;
@@ -209,6 +209,8 @@ function setupPlyr(data, video, startTime) {
     document.addEventListener('click', window.playerSettingsClickHandler);
 
     plyrPlayer.on('ended', () => playNext());
+    plyrPlayer.on('play', updatePlayPauseIcon);
+    plyrPlayer.on('pause', updatePlayPauseIcon);
 
     // Seeking & Playback
     let hasSeekedInitial = false;
@@ -253,6 +255,20 @@ function playNext() {
 
 function playPrev() {
     if (currentIndex > 0) playVideo(currentPlaylist[currentIndex - 1]);
+}
+
+function togglePlayPause() {
+    if (!plyrPlayer) return;
+    plyrPlayer.togglePlay();
+}
+
+function updatePlayPauseIcon() {
+    const $icon = $('#playPauseIcon');
+    if (plyrPlayer && plyrPlayer.playing) {
+        $icon.removeClass('fa-play').addClass('fa-pause');
+    } else {
+        $icon.removeClass('fa-pause').addClass('fa-play');
+    }
 }
 
 function toggleMinimize(shouldMin = null) {

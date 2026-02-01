@@ -74,45 +74,41 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
 function setupPlyr(data, video, startTime) {
     const $title = $('#nowPlayingTitle');
     const $uploader = $('#nowPlayingUploader');
+    const $downloadBtn = $('#downloadVideoBtn');
 
-    // 0. UPDATE vs NEW LOAD CHECK
-    // If player exists AND it's the SAME video ID, just update resolutions/metadata
+    // 0. SPEED MODE: If already playing this ID, just update labels
     if (plyrPlayer && lastPlayedId === video.id) {
         $title.text(data.title || video.title);
         $uploader.text(data.uploader || video.uploader || "YouTube");
-
-        if (!data.is_mock && !currentVideoObj.full_data_loaded) {
-            console.log("Adding resolutions to current stream...");
-            const newSources = (data.formats || []).map(f => ({ src: f.url, type: 'video/mp4', size: f.height }));
-            if (newSources.length > 1) {
-                const curTime = plyrPlayer.currentTime;
-                const isPaused = plyrPlayer.paused;
-                plyrPlayer.source = {
-                    type: 'video',
-                    title: data.title || video.title,
-                    sources: newSources,
-                    tracks: (data.subtitles || []).filter(s => s.url.startsWith('/subs/')).map(s => ({
-                        kind: 'subtitles', label: s.label, srclang: s.lang, src: s.url
-                    }))
-                };
-                plyrPlayer.once('canplay', () => {
-                    plyrPlayer.currentTime = curTime;
-                    if (!isPaused) plyrPlayer.play().catch(() => { });
-                });
-            }
-            currentVideoObj.full_data_loaded = true;
-        }
         return;
     }
 
     // 1. BRAND NEW LOAD
-    lastPlayedId = video.id; // Mark this ID as effectively playing
-    if (!data.is_mock) video.full_data_loaded = true;
+    lastPlayedId = video.id;
 
-    // Update Meta
+    // Update Meta & Download Button
     $title.text(data.title || video.title);
     $uploader.text(data.uploader || video.uploader || "YouTube");
     document.title = `${data.title || video.title} - Video Studio`;
+
+    if (data.is_offline) {
+        let sizeInfo = "";
+        const localFmt = (data.formats || []).find(f => f.is_local);
+        if (localFmt && localFmt.quality) {
+            const match = localFmt.quality.match(/-\s*([\d.]+\w+)/);
+            if (match) sizeInfo = match[1];
+        }
+
+        $downloadBtn.attr('title', `Download MP4 ${sizeInfo ? '(' + sizeInfo + ')' : ''}`);
+        $downloadBtn.show().off('click').on('click', () => {
+            const link = document.createElement('a');
+            link.href = `/offline/${video.id}.mp4`;
+            link.download = `${data.title || video.title}.mp4`;
+            link.click();
+        });
+    } else {
+        $downloadBtn.hide();
+    }
 
     // RE-INITIALIZE ONLY ON NEW VIDEO
     if (plyrPlayer) {

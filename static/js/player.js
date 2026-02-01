@@ -5,6 +5,11 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
     const $title = $('#nowPlayingTitle');
     const $uploader = $('#nowPlayingUploader');
 
+    // CANCEL PREVIOUS DOWNLOAD IF ANY
+    if (currentVideoObj && currentVideoObj.id !== video.id) {
+        fetch(`/cancel_download?video_id=${currentVideoObj.id}`).catch(() => { });
+    }
+
     $container.show();
     $title.text("Connecting...");
     $uploader.text("Please wait...");
@@ -55,40 +60,79 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
             }, 4000);
         }
 
-        const qualityLabels = {};
-        const sources = (data.formats || []).map(f => {
-            qualityLabels[f.height] = f.quality;
-            return { src: f.url, type: 'video/mp4', size: f.height };
-        });
-
-        if (sources.length === 0) {
-            sources.push({ src: data.stream_url, type: 'video/mp4', size: 0 });
-        }
-
-        // RE-INITIALIZE PLYR TO ENSURE LABELS ARE UPDATED
+        // 1. RE-INITIALIZE PLYR BASE
         if (plyrPlayer) {
             plyrPlayer.destroy();
         }
 
-        plyrPlayer = new Plyr('#videoPlayer', {
+        // 2. INJECT NEW SOURCES AND TRACKS DIRECTLY INTO DOM
+        const $video = $('#videoPlayer');
+        $video.empty(); // Clean slate
+
+        const qualityLabels = {};
+        const sources = (data.formats || []).map(f => {
+            qualityLabels[f.height] = f.quality;
+            const $s = $('<source>').attr({
+                src: f.url,
+                type: 'video/mp4',
+                size: f.height
+            });
+            $video.append($s);
+            return { src: f.url, type: 'video/mp4', size: f.height };
+        });
+
+        if (sources.length === 0) {
+            $video.append($('<source>').attr({ src: data.stream_url, type: 'video/mp4', size: 0 }));
+        }
+
+        (data.subtitles || []).forEach(sub => {
+            const $t = $('<track>').attr({
+                kind: 'subtitles',
+                label: sub.label,
+                srclang: sub.lang,
+                src: sub.url,
+                default: sub.lang === 'id' || sub.lang === 'en' || sub.label.includes('Indonesia')
+            });
+            $video.append($t);
+        });
+
+        // 3. CREATE NEW PLYR INSTANCE
+        const plyrOpts = {
             controls: [
                 'play-large', 'play', 'progress', 'current-time', 'mute', 'volume',
                 'captions', 'settings', 'pip', 'airplay', 'fullscreen'
             ],
             settings: ['captions', 'quality', 'speed'],
             quality: {
-                default: sources[0].size,
-                options: sources.map(s => s.size)
+                default: sources.length > 0 ? sources[0].size : 0,
+                options: sources.map(s => s.size),
+                forced: true
             },
             i18n: { quality: qualityLabels },
             invertTime: false,
             tooltips: { controls: true, seek: true }
-        });
+        };
 
-        // HACK: Plyr often ignores i18n for quality menu items. We force it via MutationObserver.
-        const observer = new MutationObserver(() => {
+        plyrPlayer = new Plyr('#videoPlayer', plyrOpts);
+
+        // Update title/sources property for internal state
+        plyrPlayer.source = {
+            type: 'video',
+            title: video.title,
+            sources: sources.length > 0 ? sources : [{ src: data.stream_url, type: 'video/mp4', size: 0 }],
+            tracks: (data.subtitles || []).filter(sub => sub.url.startsWith('/subs/')).map(sub => ({
+                kind: 'subtitles',
+                label: sub.label,
+                srclang: sub.lang,
+                src: sub.url,
+                default: sub.lang === 'id' || sub.lang === 'en' || sub.label.includes('Indonesia')
+            }))
+        };
+
+        // HACK: Force labels update via click listener on settings
+        const updateLabels = () => {
             const qualityButtons = document.querySelectorAll('.plyr__menu__container [data-plyr="quality"]');
-            qualityButtons.forEach(btn => {
+            qualityLabels && qualityButtons.forEach(btn => {
                 const val = btn.getAttribute('value');
                 if (qualityLabels[val]) {
                     const span = btn.querySelector('span');
@@ -97,25 +141,26 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
                     }
                 }
             });
+        };
+
+        // Scoped observer to player container for better performance
+        if (window.plyrObserver) window.plyrObserver.disconnect();
+        window.plyrObserver = new MutationObserver((mutations) => {
+            if ($('#playerContainer').is(':visible')) {
+                updateLabels();
+            }
         });
-        observer.observe(document.body, { childList: true, subtree: true });
+        window.plyrObserver.observe(document.querySelector('#playerContainer'), { childList: true, subtree: true });
+
+        document.removeEventListener('click', window.playerSettingsClickHandler);
+        window.playerSettingsClickHandler = (e) => {
+            if (e.target.closest('[data-plyr="settings"]')) {
+                setTimeout(updateLabels, 50);
+            }
+        };
+        document.addEventListener('click', window.playerSettingsClickHandler);
 
         plyrPlayer.on('ended', () => playNext());
-
-        const tracks = (data.subtitles || []).map(sub => ({
-            kind: 'subtitles',
-            label: sub.label,
-            srclang: sub.lang,
-            src: sub.url,
-            default: sub.lang === 'id' || sub.lang === 'en' || sub.label.includes('Indonesia')
-        }));
-
-        plyrPlayer.source = {
-            type: 'video',
-            title: video.title,
-            sources: sources,
-            tracks: tracks
-        };
 
         // ROBUST SEEKING STRATEGY
         let hasSeekedInitial = false;
@@ -133,22 +178,6 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
         plyrPlayer.once('playing', doInitialSeek);
         if (plyrPlayer.duration > 0) doInitialSeek();
 
-        // Update Subscribe Button State (NON-BLOCKING)
-        Helper.fetchJSON('/list_subscriptions', { hideProgress: true }).then(subData => {
-            if (!$('#playerContainer').is(':visible') || currentVideoObj.id !== video.id) return;
-            const isSubbed = subData?.results?.some(s =>
-                (video.channel_id && s.channel_id === video.channel_id) ||
-                (s.uploader === video.uploader)
-            );
-            const $subBtn = $('#subscribeBtn');
-            if ($subBtn.length) {
-                if (isSubbed) {
-                    $subBtn.removeClass('text-[#cc0000] hover:text-red-500').addClass('text-gray-500').text('SUBSCRIBED');
-                } else {
-                    $subBtn.removeClass('text-gray-500').addClass('text-[#cc0000] hover:text-red-500').text('SUBSCRIBE');
-                }
-            }
-        });
 
         // URL Timestamp Sync (Throttled to 10s to prevent TSS/History errors)
         plyrPlayer.off('timeupdate');
@@ -224,6 +253,10 @@ function toggleExpand() {
 }
 
 function closePlayer() {
+    if (currentVideoObj) {
+        fetch(`/cancel_download?video_id=${currentVideoObj.id}`).catch(() => { });
+    }
+
     if (plyrPlayer) {
         plyrPlayer.stop();
     } else {

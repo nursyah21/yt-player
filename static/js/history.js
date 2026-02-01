@@ -25,14 +25,6 @@ async function loadHistory() {
     }
 }
 
-async function deleteHistoryItem(event, videoId) {
-    event.stopPropagation();
-    if (confirm('Hapus dari histori?')) {
-        const res = await fetch(`/delete_history/${videoId}`, { method: 'DELETE' });
-        if (res.ok) loadHistory();
-    }
-}
-
 async function clearHistory() {
     if (confirm('Bersihkan semua histori dari server?')) {
         const res = await fetch('/clear_history', { method: 'POST' });
@@ -56,9 +48,32 @@ async function loadOffline() {
 }
 
 async function deleteOfflineItem(event, videoId) {
-    event.stopPropagation();
-    if (confirm('Hapus dari offline?')) {
-        const res = await fetch(`/delete_offline/${videoId}`, { method: 'DELETE' });
-        if (res.ok) loadOffline();
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
     }
+
+    // Gunakan setTimeout agar dialog confirm tidak memblokir penanganan event klik
+    setTimeout(async () => {
+        if (confirm('Hapus dari penyimpanan offline?')) {
+            const res = await fetch(`/delete_offline/${videoId}`, { method: 'DELETE' });
+            if (res.ok) loadOffline();
+        }
+    }, 10);
+}
+
+async function deleteHistoryItem(event, videoId) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+    }
+
+    setTimeout(async () => {
+        if (confirm('Hapus dari histori tontonan?')) {
+            const res = await fetch(`/delete_history/${videoId}`, { method: 'DELETE' });
+            if (res.ok) loadHistory();
+        }
+    }, 10);
 }

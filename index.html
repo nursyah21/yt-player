@@ -9,13 +9,13 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <!-- Modular CSS -->
-    <link href="/static/css/base.css" rel="stylesheet">
-    <link href="/static/css/navigation.css" rel="stylesheet">
-    <link href="/static/css/layout.css" rel="stylesheet">
-    <link href="/static/css/cards.css" rel="stylesheet">
-    <link href="/static/css/player.css" rel="stylesheet">
-    <link href="/static/css/playlists.css" rel="stylesheet">
-    <link href="/static/css/components.css" rel="stylesheet">
+    <link href="/static/css/base.css?v=1.1" rel="stylesheet">
+    <link href="/static/css/navigation.css?v=1.1" rel="stylesheet">
+    <link href="/static/css/layout.css?v=1.1" rel="stylesheet">
+    <link href="/static/css/cards.css?v=1.1" rel="stylesheet">
+    <link href="/static/css/player.css?v=1.1" rel="stylesheet">
+    <link href="/static/css/playlists.css?v=1.1" rel="stylesheet">
+    <link href="/static/css/components.css?v=1.1" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.css" />
@@ -180,11 +180,6 @@
                         <span id="nowPlayingTitle" class="truncate block">Streaming</span>
                         <div class="flex items-center gap-2">
                             <span id="nowPlayingUploader" class="truncate text-xs text-gray-400">YouTube</span>
-                            <button id="subscribeBtn"
-                                class="text-xs text-[#cc0000] font-bold uppercase hover:text-red-500 transition ml-2"
-                                onclick="if(currentVideoObj) toggleSubscription(currentVideoObj.channel_id, currentVideoObj.uploader, null)">
-                                SUBSCRIBE
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -243,16 +238,16 @@
 
     <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
     <!-- Modular JavaScript -->
-    <script src="/static/js/globals.js"></script>
-    <script src="/static/js/helpers.js"></script>
-    <script src="/static/js/layout.js"></script>
-    <script src="/static/js/routing.js"></script>
-    <script src="/static/js/search.js"></script>
-    <script src="/static/js/player.js"></script>
-    <script src="/static/js/playlists.js"></script>
-    <script src="/static/js/subscriptions.js"></script>
-    <script src="/static/js/history.js"></script>
-    <script src="/static/js/init.js"></script>
+    <script src="/static/js/globals.js?v=1.1"></script>
+    <script src="/static/js/helpers.js?v=1.1"></script>
+    <script src="/static/js/layout.js?v=1.1"></script>
+    <script src="/static/js/routing.js?v=1.1"></script>
+    <script src="/static/js/search.js?v=1.1"></script>
+    <script src="/static/js/player.js?v=1.1"></script>
+    <script src="/static/js/playlists.js?v=1.1"></script>
+    <script src="/static/js/subscriptions.js?v=1.1"></script>
+    <script src="/static/js/history.js?v=1.1"></script>
+    <script src="/static/js/init.js?v=1.1"></script>
 </body>
 
 </html>

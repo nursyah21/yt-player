@@ -4,9 +4,16 @@ async function loadSubscriptions() {
     const $list = $('#subscriptionList');
     $list.empty();
 
+    // Reset global registry
+    window.subscribedChannels = {};
+
     if (data?.results?.length) {
         data.results.sort((a, b) => a.uploader.localeCompare(b.uploader));
         data.results.forEach(sub => {
+            // Populate global registry for menu state checks
+            if (sub.channel_id) window.subscribedChannels[sub.channel_id] = true;
+            window.subscribedChannels[sub.uploader] = true;
+
             const hasThumb = sub.thumbnail && !sub.thumbnail.includes('sample_avatar.png') && !sub.thumbnail.includes('gstatic.com');
             const thumbHtml = hasThumb ? `<img src="${sub.thumbnail}">` : '';
             const link = `/?page=home&q=${sub.channel_id ? encodeURIComponent('https://www.youtube.com/channel/' + sub.channel_id + '/videos') : encodeURIComponent('"' + sub.uploader + '"')}&uploader=${encodeURIComponent(sub.uploader)}`;
@@ -32,14 +39,29 @@ async function toggleSubscription(channelId, uploader, thumbnail) {
 
     if (data?.status === 'success') {
         const isSubbed = data.is_subscribed;
-        loadSubscriptions();
-        const $btn = $('#subscribeBtn');
-        if ($btn.length) {
-            if (isSubbed) {
-                $btn.removeClass('text-[#cc0000] hover:text-red-500').addClass('text-gray-500').text('SUBSCRIBED');
-            } else {
-                $btn.removeClass('text-gray-500').addClass('text-[#cc0000] hover:text-red-500').text('SUBSCRIBE');
-            }
+        await loadSubscriptions();
+
+        const newText = isSubbed ? 'Unsubscribe' : 'Subscribe';
+
+        // Update Player specific elements
+        const $text = $('#playerSubscribeText');
+        if ($text.length) {
+            $text.text(newText);
+            $('#playerSubscribeMenu').removeClass('opacity-50');
         }
+
+        // Update all related menu items across the UI robustly
+        $('.sub-menu-item').each(function () {
+            const $item = $(this);
+            const itemCid = $item.attr('data-channel-id');
+            const itemUp = $item.attr('data-uploader');
+
+            if ((channelId && itemCid === channelId) || (uploader && itemUp === uploader)) {
+                $item.find('span').text(newText);
+            }
+        });
     }
 }
+
+// Global registry
+window.subscribedChannels = {};

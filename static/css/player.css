@@ -60,6 +60,7 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+
 .player-title-info {
     flex: 1;
     min-width: 0;
@@ -190,4 +191,30 @@
         border-top: 1px solid rgba(255, 255, 255, 0.05);
         max-height: 40%;
     }
+}
+
+/* Fix Plyr Menu Clipping in Minimized Mode */
+#playerContainer:not(.full-view) .plyr__menu__container [role="menu"] {
+    max-height: 160px;
+    /* Show about 3-4 items */
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Slim scrollbar for Plyr menus */
+.plyr__menu__container [role="menu"]::-webkit-scrollbar {
+    width: 4px;
+}
+
+.plyr__menu__container [role="menu"]::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.plyr__menu__container [role="menu"]::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+.plyr__menu__container [role="menu"]::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
 }

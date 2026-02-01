@@ -126,3 +126,80 @@
 .btn-danger:hover {
     background: #dc2626;
 }
+
+/* Video Card Menu (Three Dots) */
+.video-menu-container {
+    position: relative;
+    margin-left: auto;
+}
+
+.video-menu-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #888;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.video-menu-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.video-context-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    width: 180px;
+    padding: 6px;
+    z-index: 100;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    display: none;
+}
+
+.video-context-menu.show {
+    display: block;
+}
+
+.video-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    color: #eee;
+    font-size: 13px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.video-menu-item:hover {
+    background: #333;
+    color: #fff;
+}
+
+.video-menu-item i {
+    width: 16px;
+    font-size: 14px;
+    text-align: center;
+    color: #888;
+}
+
+.video-menu-item:hover i {
+    color: #fff;
+}
+
+.video-menu-item.danger:hover {
+    color: #ef4444;
+}
+
+.video-menu-item.danger:hover i {
+    color: #ef4444;
+}

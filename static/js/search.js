@@ -96,6 +96,7 @@ async function searchVideos(customQuery = null, displayName = null, updateUrl = 
         url.searchParams.set('q', query);
         if (displayName) url.searchParams.set('uploader', displayName);
         url.searchParams.delete('p');
+        url.searchParams.delete('t'); // Clear timestamp on new search
         window.history.pushState({}, '', url);
     }
 
@@ -104,7 +105,9 @@ async function searchVideos(customQuery = null, displayName = null, updateUrl = 
     renderedVideoIds.clear();
     showSection('home', null, false);
     $('#resultsGrid').empty();
-    $('#loading').removeClass('hidden');
+
+    // NProgress Loader
+    NProgress.start();
     document.title = `Cari: ${displayName || query} - Video Studio`;
 
     try {
@@ -138,8 +141,11 @@ async function searchVideos(customQuery = null, displayName = null, updateUrl = 
             }
         }
     } finally {
-        $('#loading').addClass('hidden');
-        isFetching = false;
+        // Yield to UI thread to ensure cards are painted before stopping loader
+        setTimeout(() => {
+            NProgress.done();
+            isFetching = false;
+        }, 50);
     }
 }
 

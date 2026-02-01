@@ -16,31 +16,6 @@
     object-fit: cover;
 }
 
-/* Loading Shimmer Animation */
-.shimmer {
-    background: #1a1a1a;
-    position: relative;
-    overflow: hidden;
-    border-radius: 8px;
-}
-
-.shimmer::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, #252525, transparent);
-    animation: loading-pulse 1.5s infinite;
-}
-
-@keyframes loading-pulse {
-    100% {
-        transform: translateX(100%);
-    }
-}
 
 /* Results Grid */
 .results-grid {

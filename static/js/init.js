@@ -1,27 +1,13 @@
 /* Initialization & Events */
 function init() {
-    if (typeof NProgress !== 'undefined') NProgress.configure({ showSpinner: false });
+    if (typeof NProgress !== 'undefined') {
+        NProgress.configure({ showSpinner: false, minimum: 0.1, speed: 200 });
+    }
     initSidebar();
     handleRouting();
-    setupShimmer();
     setupInfiniteScroll();
     setupEventListeners();
     loadSubscriptions();
-}
-
-function setupShimmer() {
-    let shimmerHTML = '';
-    for (let i = 0; i < 8; i++) {
-        shimmerHTML += `
-            <div class="space-y-3">
-                <div class="shimmer aspect-video"></div>
-                <div class="space-y-2">
-                    <div class="shimmer h-4 w-full"></div>
-                    <div class="shimmer h-3 w-2/3"></div>
-                </div>
-            </div>`;
-    }
-    $('#loading').html(shimmerHTML);
 }
 
 function setupInfiniteScroll() {

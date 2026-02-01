@@ -22,7 +22,11 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
     if (updateUrl) {
         const url = new URL(window.location);
         url.searchParams.set('v', video.id);
+
+        // Only set 't' if manually requested (e.g. from URL init), otherwise clear it
         if (startTime > 0) url.searchParams.set('t', startTime);
+        else url.searchParams.delete('t');
+
         window.history.pushState({}, '', url);
     }
 
@@ -31,6 +35,7 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
     if (foundIdx !== -1) currentIndex = foundIdx;
 
     // 2. PARALLEL FETCHES
+    NProgress.start();
     const dataPromise = Helper.fetchJSON(`/get_stream?video_id=${video.id}`);
     saveToHistory(video);
 
@@ -52,22 +57,27 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
             duration: video.duration,
             is_mock: true // Mark as initial mock data
         }, video, startTime);
+        setTimeout(() => NProgress.done(), 100);
     }
 
     // 4. WAIT FOR FULL DATA
-    const data = await dataPromise;
+    try {
+        const data = await dataPromise;
 
-    // RACE CONDITION CHECK
-    if (!$('#playerContainer').is(':visible') || currentVideoObj.id !== video.id) {
-        return;
-    }
+        // RACE CONDITION CHECK
+        if (!$('#playerContainer').is(':visible') || currentVideoObj.id !== video.id) {
+            return;
+        }
 
-    if (data) {
-        // Update state with confirmed data from server
-        currentVideoObj = { ...video, ...data };
-        setupPlyr(data, video, startTime);
-    } else if (!video.is_offline) {
-        alert("Gagal memutar video.");
+        if (data) {
+            // Update state with confirmed data from server
+            currentVideoObj = { ...video, ...data };
+            setupPlyr(data, video, startTime);
+        } else if (!video.is_offline) {
+            alert("Gagal memutar video.");
+        }
+    } finally {
+        setTimeout(() => NProgress.done(), 100);
     }
 }
 
@@ -220,19 +230,6 @@ function setupPlyr(data, video, startTime) {
     plyrPlayer.once('playing', doInitialSeek);
     if (plyrPlayer.duration > 0) doInitialSeek();
 
-    // Timestamp Sync
-    let lastSyncTime = Date.now();
-    plyrPlayer.on('timeupdate', () => {
-        const now = Date.now();
-        const vEl = document.querySelector('video');
-        if (!plyrPlayer.paused && (now - lastSyncTime > 10000) && vEl) {
-            const curSec = Math.floor(vEl.currentTime);
-            const url = new URL(window.location);
-            url.searchParams.set('t', curSec);
-            window.history.replaceState({}, '', url);
-            lastSyncTime = now;
-        }
-    });
 
     if ($('#playlistView').is(':visible')) renderPlaylist();
 }

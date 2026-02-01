@@ -2,10 +2,22 @@
 function handleSearchInput() {
     clearTimeout(suggestionDebounceTimer);
     const query = $('#videoQuery').val().trim();
-    if (!query) {
-        showSearchHistory();
+
+    // SMART SEARCH: If not home, filter local content immediately
+    if (activeSection !== 'home') {
+        filterLocalContent(query);
+        $('#clearSearchBtn').toggle(!!query);
+        $('#suggestionsDropdown').hide();
         return;
     }
+
+    if (!query) {
+        showSearchHistory();
+        $('#clearSearchBtn').hide();
+        return;
+    }
+    $('#clearSearchBtn').show();
+
     suggestionDebounceTimer = setTimeout(async () => {
         const data = await Helper.fetchJSON(`/search_suggestions?q=${encodeURIComponent(query)}`);
         if (data) renderSuggestions(data.suggestions, false);
@@ -60,7 +72,13 @@ function handleSearchKeydown(e) {
             selectSuggestion($items.eq(selectedIndex).find('span').text());
         } else {
             $('#suggestionsDropdown').hide();
-            searchVideos();
+            // Only trigger server search if we are on Home
+            if (activeSection === 'home') {
+                searchVideos();
+            } else {
+                // Already filtered via input, just hide keyboard/focus
+                $('#videoQuery').blur();
+            }
         }
         return;
     }
@@ -180,4 +198,76 @@ function searchChannel(event, channelId, uploaderName) {
     } else if (uploaderName && uploaderName !== 'Unknown Channel' && uploaderName !== 'Channel') {
         searchVideos(`"${uploaderName}"`, uploaderName);
     }
+}
+
+async function filterLocalContent(query) {
+    let targetGrid = null;
+
+    // Check if we are in Playlist Root (List of playlists) vs Detail (Videos in a playlist)
+    const isPlaylistRoot = activeSection === 'playlist' && $('#playlistList').is(':visible');
+
+    if (activeSection === 'history') targetGrid = $('#historyGrid');
+    else if (activeSection === 'offline') targetGrid = $('#offlineGrid');
+    else if (activeSection === 'playlist') {
+        if (isPlaylistRoot) {
+            // SPECIAL CASE: Global Playlist Search
+            return handleGlobalPlaylistSearch(query);
+        }
+        targetGrid = $('#playlistVideoGrid');
+    }
+
+    if (!targetGrid || !targetGrid.length) return;
+
+    if (!query) {
+        targetGrid.children().show();
+        return;
+    }
+
+    const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+    targetGrid.children('.video-card').each(function () {
+        const $card = $(this);
+        const title = $card.find('.video-title').text().toLowerCase();
+        const uploader = $card.find('.video-uploader').text().toLowerCase();
+        const textToSearch = title + " " + uploader;
+
+        const match = terms.every(term => textToSearch.includes(term));
+
+        if (match) {
+            $card.show();
+        } else {
+            $card.hide();
+        }
+    });
+}
+
+let globalPlaylistSearchTimer;
+async function handleGlobalPlaylistSearch(query) {
+    clearTimeout(globalPlaylistSearchTimer);
+    const $grid = $('#playlistGrid');
+
+    if (!query) {
+        // Restore original playlist list
+        loadPlaylists();
+        return;
+    }
+
+    globalPlaylistSearchTimer = setTimeout(async () => {
+        $grid.html('<div class="col-span-full text-center py-10 opacity-50">Mencari di semua playlist...</div>');
+        const data = await Helper.post('/search_playlist', { query });
+
+        if (data && data.results && data.results.length > 0) {
+            const html = data.results.map(v => {
+                // Add "Found in: X" badge
+                let cardHtml = Helper.renderVideoCard(v, 'playlist_search');
+                // Inject badge manually since Helper is generic
+                const badge = `<div class="absolute top-2 left-2 bg-blue-600/90 text-white text-[10px] px-2 py-1 rounded shadow z-10">
+                                <i class="fas fa-folder mr-1"></i> ${v.found_in_playlist}
+                               </div>`;
+                return cardHtml.replace('<div class="video-card', `<div class="relative video-card`).replace('<div class="thumbnail-box', badge + '<div class="thumbnail-box');
+            }).join('');
+            $grid.html(html);
+        } else {
+            $grid.html('<div class="col-span-full text-center py-10 text-gray-500">Tidak ada video yang cocok di playlist manapun.</div>');
+        }
+    }, 300);
 }

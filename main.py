@@ -841,6 +841,36 @@ def delete_playlist(playlist_name: str):
         return {"status": "success"}
     except: raise HTTPException(status_code=500)
 
+@app.post("/search_playlist")
+def search_playlist(data: dict):
+    try:
+        query = data.get("query", "").lower().strip()
+        if not query: return {"results": []}
+        
+        results = []
+        with open(PLAYLISTS_FILE, 'r', encoding='utf-8') as f:
+            playlists = json.load(f)
+            
+            # Split query for fuzzy matching properly
+            terms = [t for t in query.split() if t]
+
+            for pl_name, videos in playlists.items():
+                for video in videos:
+                    # Search target: Title + Uploader
+                    text_to_search = (video.get('title', '') + " " + video.get('uploader', '')).lower()
+                    
+                    # Check if ALL terms match
+                    if all(term in text_to_search for term in terms):
+                        # Add playlist name to context
+                        video_copy = video.copy()
+                        video_copy['found_in_playlist'] = pl_name
+                        results.append(video_copy)
+                        
+        return {"results": results}
+    except Exception as e:
+        print(f"Search Error: {e}")
+        return {"results": []}
+
 def is_port_in_use(port):
     import socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

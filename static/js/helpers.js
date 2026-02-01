@@ -100,11 +100,11 @@ const Helper = {
                 <div class="px-1 flex items-start gap-2">
                     <div class="flex flex-col flex-1 min-w-0">
                         <a href="/?v=${video.id}" class="cursor-pointer block" onclick="event.preventDefault(); playVideo(${videoData})">
-                            <h3 class="font-bold text-[14px] text-white leading-tight line-clamp-2">${video.title}</h3>
+                            <h3 class="video-title font-bold text-[14px] text-white leading-tight line-clamp-2">${video.title}</h3>
                         </a>
                         <div class="mt-1 flex flex-col">
                             <a href="/?page=home&q=${video.channel_id ? encodeURIComponent('https://www.youtube.com/channel/' + video.channel_id + '/videos') : encodeURIComponent('"' + (video.uploader || 'Channel') + '"')}&uploader=${encodeURIComponent(video.uploader || 'Channel')}" 
-                               class="text-[12px] text-gray-500 hover:text-white hover:underline transition cursor-pointer truncate max-w-[200px] block" 
+                               class="video-uploader text-[12px] text-gray-500 hover:text-white hover:underline transition cursor-pointer truncate max-w-[200px] block" 
                                onclick="event.preventDefault(); searchChannel(event, '${video.channel_id || ''}', '${(video.uploader || 'Channel').replace(/'/g, "\\'")}')">
                                ${video.uploader || 'Unknown Channel'}
                             </a>

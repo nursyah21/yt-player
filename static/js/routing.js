@@ -10,8 +10,32 @@ async function handleRouting() {
     const full = params.get('full');
 
     if (v) {
-        const startTime = parseInt(params.get('t')) || 0;
-        await playVideo({ id: v, title: "Loading...", thumbnail: "" }, false, startTime);
+        let startTime = parseInt(params.get('t')) || 0;
+
+        try {
+            const saved = JSON.parse(localStorage.getItem('last_video_state'));
+            const navEntry = performance.getEntriesByType("navigation")[0];
+            const isReload = navEntry ? (navEntry.type === 'reload') : false;
+
+            if (saved && saved.id === v) {
+                // Skenario 1: REFRESH -> Wajib 'Resume' dari memori terakhir (Abaikan URL t)
+                if (isReload) {
+                    if (saved.time > 0) {
+                        startTime = saved.time;
+                        console.log("Reload detected: Resuming from LocalStorage", startTime);
+                    }
+                }
+                // Skenario 2: LINK BARU/MANUAL -> Hormati URL 't' jika ada. Jika kosong, baru cek memori.
+                else {
+                    if (startTime === 0 && saved.time > 0) {
+                        startTime = saved.time;
+                        console.log("No URL param: Resuming from LocalStorage", startTime);
+                    }
+                }
+            }
+        } catch (e) { }
+
+        await playVideo({ id: v, title: "Loading...", thumbnail: "" }, true, startTime);
     }
 
     if (q) {

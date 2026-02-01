@@ -23,11 +23,11 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
         const url = new URL(window.location);
         url.searchParams.set('v', video.id);
 
-        // Only set 't' if manually requested (e.g. from URL init), otherwise clear it
+        // Only set 't' if manually requested
         if (startTime > 0) url.searchParams.set('t', startTime);
         else url.searchParams.delete('t');
 
-        window.history.pushState({}, '', url);
+        window.history.replaceState({}, '', url); // Use replaceState to keep history clean
     }
 
     // Sync playlist index
@@ -160,12 +160,7 @@ function setupPlyr(data, video, startTime) {
             'play-large', 'play', 'progress', 'current-time', 'mute', 'volume',
             'captions', 'settings', 'pip', 'airplay', 'fullscreen'
         ],
-        settings: ['captions', 'quality', 'speed'],
-        quality: {
-            default: sources.length > 0 ? sources[0].size : 0,
-            options: sources.map(s => s.size),
-            forced: true
-        },
+        settings: ['captions', 'speed'],
         i18n: { quality: qualityLabels },
         invertTime: false,
         tooltips: { controls: true, seek: true }
@@ -230,6 +225,24 @@ function setupPlyr(data, video, startTime) {
     plyrPlayer.once('playing', doInitialSeek);
     if (plyrPlayer.duration > 0) doInitialSeek();
 
+
+    // Persistent State (LocalStorage)
+    let lastSyncSec = -1;
+    plyrPlayer.on('timeupdate', () => {
+        const vEl = document.querySelector('video');
+        if (!plyrPlayer.paused && vEl) {
+            const curSec = Math.floor(vEl.currentTime);
+            if (curSec !== lastSyncSec) {
+                // Save exactly what we're watching
+                localStorage.setItem('last_video_state', JSON.stringify({
+                    id: currentVideoObj.id,
+                    time: curSec,
+                    timestamp: Date.now() // to check staleness later if needed
+                }));
+                lastSyncSec = curSec;
+            }
+        }
+    });
 
     if ($('#playlistView').is(':visible')) renderPlaylist();
 }

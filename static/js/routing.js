@@ -51,6 +51,21 @@ async function showSection(sectionId, element, updateUrl = true) {
     const sectionNames = { 'home': 'Beranda', 'history': 'Histori', 'offline': 'Offline', 'playlist': 'Playlist' };
     document.title = `${sectionNames[sectionId] || 'Video'} - Video Studio`;
 
+    // RESET IF NAVIGATING TO HOME MANUALLY
+    if (sectionId === 'home' && updateUrl) {
+        currentQuery = "";
+        currentOffset = 1;
+        renderedVideoIds.clear();
+        $('#videoQuery').val('');
+        $('#clearSearchBtn').hide();
+        $('#resultsGrid').html(`
+            <div class="empty-state">
+                <i class="fas fa-play-circle text-6xl mb-4"></i>
+                <p class="text-xl">Cari video untuk memulai</p>
+            </div>
+        `);
+    }
+
     if (sectionId === 'history') await loadHistory();
     if (sectionId === 'offline') await loadOffline();
     if (sectionId === 'playlist') await loadPlaylists();

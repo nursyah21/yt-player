@@ -1,4 +1,3 @@
-/* Navigation & Header */
 .navbar {
     position: fixed;
     top: 0;
@@ -11,7 +10,14 @@
     padding: 0 16px;
     z-index: 50;
     border-bottom: 1px solid #222;
-    gap: 20px;
+}
+
+/* Force side elements to have same width so search stays in middle */
+.navbar>div:first-child {
+    min-width: 240px;
+    /* Matching sidebar width */
+    display: flex;
+    align-items: center;
 }
 
 .nav-toggle-btn {
@@ -30,8 +36,10 @@
 }
 
 .navbar-spacer {
-    width: 40px;
+    min-width: 240px;
+    /* Balance the left side logo area */
 }
+
 
 .logo-text {
     font-weight: 900;
@@ -46,13 +54,29 @@
     .logo-text {
         display: none;
     }
+
+    .navbar>div:first-child {
+        min-width: auto;
+    }
+
+    .navbar-spacer {
+        display: none;
+    }
+
+    .search-container {
+        max-width: none;
+        margin-left: 10px;
+    }
 }
+
 
 /* Search Bar */
 .search-container {
     position: relative;
     width: 100%;
     max-width: 600px;
+    margin: 0 auto;
+    /* This centers it */
     background: #0f0f0f;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 24px;

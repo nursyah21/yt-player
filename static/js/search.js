@@ -81,6 +81,13 @@ function handleSearchKeydown(e) {
 async function searchVideos(customQuery = null, displayName = null, updateUrl = true) {
     const query = customQuery || $('#videoQuery').val();
     if (displayName) $('#videoQuery').val(displayName);
+
+    if (query && query.trim() !== "") {
+        $('#clearSearchBtn').show();
+    } else {
+        $('#clearSearchBtn').hide();
+    }
+
     if (!query || isFetching) return;
 
     if (updateUrl) {

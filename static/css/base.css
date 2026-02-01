@@ -33,3 +33,7 @@ body {
     scrollbar-width: thin;
     scrollbar-color: #2a2a2a #0f0f0f;
 }
+
+.hidden {
+    display: none !important;
+}

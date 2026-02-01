@@ -46,13 +46,13 @@ function setupEventListeners() {
 
     $('#videoQuery').on('input', function () {
         handleSearchInput();
-        if ($(this).val().trim()) $('#clearSearchBtn').removeClass('hidden');
-        else $('#clearSearchBtn').addClass('hidden');
+        if ($(this).val().trim()) $('#clearSearchBtn').show();
+        else $('#clearSearchBtn').hide();
     });
 
     $('#clearSearchBtn').on('click', () => {
         $('#videoQuery').val('').focus();
-        $('#clearSearchBtn').addClass('hidden');
+        $('#clearSearchBtn').hide();
         $('#suggestionsDropdown').hide();
     });
 

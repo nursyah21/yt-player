@@ -456,6 +456,13 @@ body {
     font-size: 10px;
     color: #666;
     margin-top: 4px;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.playlist-uploader:hover {
+    color: #fff;
+    text-decoration: underline;
 }
 
 /* Sidebar Styles */
@@ -497,6 +504,7 @@ body {
     border-radius: 8px;
     cursor: pointer;
     color: #f1f1f1;
+    text-decoration: none;
     transition: 0.2s;
 }
 

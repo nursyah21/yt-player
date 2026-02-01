@@ -38,22 +38,26 @@
 
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar">
-        <div class="sidebar-item active" onclick="showSection('home', this)">
+        <a href="/?page=home" class="sidebar-item active" data-section="home"
+            onclick="event.preventDefault(); showSection('home', this)">
             <i class="fas fa-home"></i>
             <span>Beranda</span>
-        </div>
-        <div class="sidebar-item" onclick="showSection('history', this)">
+        </a>
+        <a href="/?page=history" class="sidebar-item" data-section="history"
+            onclick="event.preventDefault(); showSection('history', this)">
             <i class="fas fa-history"></i>
             <span>Histori</span>
-        </div>
-        <div class="sidebar-item" onclick="showSection('offline', this)">
+        </a>
+        <a href="/?page=offline" class="sidebar-item" data-section="offline"
+            onclick="event.preventDefault(); showSection('offline', this)">
             <i class="fas fa-download"></i>
             <span>Offline</span>
-        </div>
-        <div class="sidebar-item" onclick="showSection('playlist', this)">
+        </a>
+        <a href="/?page=playlist" class="sidebar-item" data-section="playlist"
+            onclick="event.preventDefault(); showSection('playlist', this)">
             <i class="fas fa-list-alt"></i>
             <span>Playlist</span>
-        </div>
+        </a>
     </aside>
 
     <main id="mainContent" class="main-content main-content-area">

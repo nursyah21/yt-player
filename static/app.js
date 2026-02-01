@@ -18,6 +18,7 @@ let pendingPlaylistVideo = null;
 let selectedIndex = -1;
 let suggestionDebounceTimer;
 let plyrPlayer = null;
+let pendingRepairPlaylist = null;
 
 // --- Helpers ---
 const Helper = {
@@ -100,10 +101,11 @@ const Helper = {
                         <h3 class="font-bold text-[14px] text-white leading-tight line-clamp-2">${video.title}</h3>
                     </div>
                     <div class="mt-1.5 flex flex-col">
-                        <span class="text-[12px] text-gray-500 hover:text-white hover:underline transition cursor-pointer truncate max-w-[200px] block mb-0.5" 
-                           onclick="searchChannel(event, '${video.channel_id || ''}', '${(video.uploader || 'Channel').replace(/'/g, "\\'")}')">
+                        <a href="/?page=home&q=${video.channel_id ? encodeURIComponent('https://www.youtube.com/channel/' + video.channel_id + '/videos') : encodeURIComponent('"' + (video.uploader || 'Channel') + '"')}&uploader=${encodeURIComponent(video.uploader || 'Channel')}" 
+                           class="text-[12px] text-gray-500 hover:text-white hover:underline transition cursor-pointer truncate max-w-[200px] block mb-0.5" 
+                           onclick="event.preventDefault(); searchChannel(event, '${video.channel_id || ''}', '${(video.uploader || 'Channel').replace(/'/g, "\\'")}')">
                            ${video.uploader || 'Unknown Channel'}
-                        </span>
+                        </a>
                         <div class="text-[11px] text-gray-600 font-medium flex gap-1 items-center">
                             <span>${video.views ? this.formatViews(video.views) : '0'}x ditonton</span>
                         </div>
@@ -276,7 +278,7 @@ async function showSection(sectionId, element, updateUrl = true) {
     activeSection = sectionId;
     $('.sidebar-item').removeClass('active');
 
-    const $targetItem = element ? $(element) : $(`.sidebar-item[onclick*="'${sectionId}'"]`);
+    const $targetItem = element ? $(element) : $(`.sidebar-item[data-section="${sectionId}"]`);
     $targetItem.addClass('active');
 
     $('#homeSection, #historySection, #offlineSection, #playlistSection').addClass('hidden-section');
@@ -404,7 +406,7 @@ async function searchVideos(customQuery = null, displayName = null, updateUrl = 
     showSection('home', null, false);
     $('#resultsGrid').empty();
     $('#loading').removeClass('hidden');
-    document.title = `Cari: ${query} - Video Studio`;
+    document.title = `Cari: ${displayName || query} - Video Studio`;
 
     try {
         isFetching = true;
@@ -422,6 +424,21 @@ async function searchVideos(customQuery = null, displayName = null, updateUrl = 
             });
             updatePlaylist(valid, false);
             currentOffset += data.results.length;
+
+            // SMART LINK REPAIR: If backend found a channel_id from this search, auto-repair the playlist links
+            if (data.found_channel_id && displayName) {
+                // 1. Repair Stored Playlist File (using context if available)
+                if (pendingRepairPlaylist) {
+                    Helper.post('/update_playlist_channel_by_uploader', {
+                        playlist_name: pendingRepairPlaylist,
+                        uploader: displayName, // e.g. "Tsukuyomi / YurryCanon"
+                        channel_id: data.found_channel_id
+                    });
+                    console.log("Repairing playlist:", pendingRepairPlaylist, displayName);
+                    // Clear context after use
+                    pendingRepairPlaylist = null;
+                }
+            }
         }
     } finally {
         $('#loading').addClass('hidden');
@@ -454,7 +471,17 @@ async function loadMoreVideos() {
 
 function searchChannel(event, channelId, uploaderName) {
     event.stopPropagation();
-    if (channelId) searchVideos(`https://www.youtube.com/channel/${channelId}/videos`, uploaderName);
+
+    // Context capture for Smart Link Repair
+    pendingRepairPlaylist = (activeSection === 'playlist') ? $('#currentPlaylistName').text() : null;
+
+    if (channelId && channelId !== 'undefined' && channelId !== 'null' && channelId !== '') {
+        searchVideos(`https://www.youtube.com/channel/${channelId}/videos`, uploaderName);
+    } else if (uploaderName && uploaderName !== 'Unknown Channel' && uploaderName !== 'Channel') {
+        // Fallback: Gunakan nama uploader dengan tanda kutip untuk hasil lebih akurat
+        // Dan pastikan nama tersebut muncul di search bar (displayName)
+        searchVideos(`"${uploaderName}"`, uploaderName);
+    }
 }
 
 // --- Player ---
@@ -492,17 +519,53 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
     }
 
     const data = await Helper.fetchJSON(`/get_stream?video_id=${video.id}`);
+
+    // RACE CONDITION FIX: 
+    // If player was closed OR user switched to another video while fetching, abort.
+    if (!$('#playerContainer').is(':visible') || currentVideoObj.id !== video.id) {
+        return;
+    }
+
     if (data?.stream_url) {
         // Update metadata from stream response (more accurate)
         if (data.title) video.title = data.title;
         if (data.thumbnail) video.thumbnail = data.thumbnail;
         if (data.uploader) video.uploader = data.uploader;
+        if (data.channel_id) video.channel_id = data.channel_id;
         if (data.duration) video.duration = data.duration;
         if (data.views) video.views = data.views;
+
+        // Update playlist item in memory so the UI reflects the new channel_id
+        const plIdx = currentPlaylist.findIndex(v => v.id === video.id);
+        if (plIdx !== -1) {
+            currentPlaylist[plIdx] = { ...currentPlaylist[plIdx], ...video };
+        }
 
         $title.text(video.title);
         $uploader.text(video.uploader || "YouTube");
         document.title = `${video.title} - Video Studio`;
+
+        // --- POLLING TO REPAIR LINK ---
+        // If channel_id is missing (offline cache from old version), poll backend to see if auto-repair finished
+        if (!video.channel_id) {
+            setTimeout(async () => {
+                const freshMeta = await Helper.fetchJSON(`/get_video_meta/${video.id}`);
+                if (freshMeta && freshMeta.channel_id) {
+                    video.channel_id = freshMeta.channel_id;
+                    // Update current playlist in memory
+                    const plIdx = currentPlaylist.findIndex(v => v.id === video.id);
+                    if (plIdx !== -1) {
+                        currentPlaylist[plIdx].channel_id = freshMeta.channel_id;
+                        if ($('#playlistView').is(':visible')) renderPlaylist();
+                    }
+                    // Trigger playlist file update
+                    if (activeSection === 'playlist') {
+                        const pname = $('#currentPlaylistName').text();
+                        if (pname) Helper.post('/update_playlist_meta', { playlist_name: pname, video: video });
+                    }
+                }
+            }, 4000); // Check after 4 seconds
+        }
 
         const tracks = (data.subtitles || []).map(sub => ({
             kind: 'subtitles',
@@ -546,6 +609,15 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
 
         saveToHistory(video);
         currentIndex = currentPlaylist.findIndex(v => v.id === video.id);
+
+        // Auto-repair playlist data if needed
+        if (activeSection === 'playlist') {
+            const playlistName = $('#currentPlaylistName').text();
+            if (playlistName) {
+                Helper.post('/update_playlist_meta', { playlist_name: playlistName, video: video });
+            }
+        }
+
         if ($('#playlistView').is(':visible')) renderPlaylist();
     } else {
         alert("Gagal memutar video.");
@@ -615,6 +687,7 @@ async function saveToHistory(video) {
         title: video.title || "Unknown Title",
         thumbnail: video.thumbnail || "",
         uploader: video.uploader || "Unknown Channel",
+        channel_id: video.channel_id || "",
         duration: video.duration || 0,
         views: video.views || 0,
         is_offline: video.is_offline || false
@@ -853,7 +926,10 @@ function renderPlaylist() {
                 <img src="${video.thumbnail}">
                 <div class="playlist-info">
                     <div class="playlist-title">${video.title}</div>
-                    <div class="playlist-uploader">${video.uploader || 'Channel'}</div>
+                    <a href="/?page=home&q=${video.channel_id ? encodeURIComponent('https://www.youtube.com/channel/' + video.channel_id + '/videos') : encodeURIComponent('"' + (video.uploader || 'Channel') + '"')}&uploader=${encodeURIComponent(video.uploader || 'Channel')}"
+                       class="playlist-uploader block" onclick="event.preventDefault(); searchChannel(event, '${video.channel_id || ''}', '${(video.uploader || 'Channel').replace(/'/g, "\\'")}')">
+                        ${video.uploader || 'Channel'}
+                    </a>
                 </div>
             </div>`;
     }).join('');

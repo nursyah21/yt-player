@@ -84,6 +84,7 @@ class HistoryItem(BaseModel):
     title: str
     thumbnail: str
     uploader: str
+    channel_id: str = ""
     duration: int
     views: int = 0
     is_offline: bool = False
@@ -248,7 +249,13 @@ async def extract_video(video_req: VideoRequest):
                         "is_offline": is_ready
                     })
 
-            return {"results": results}
+            # SMART FEATURE: If searching by quoted name, try to extract channel_id from result to help frontend repair links
+            found_channel_id = None
+            if search_query.startswith('ytsearch') and '"' in search_query:
+                 if results and results[0].get('channel_id'):
+                     found_channel_id = results[0]['channel_id']
+
+            return {"results": results, "found_channel_id": found_channel_id}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -310,8 +317,8 @@ async def refresh_meta_task(video_id: str, meta_path: str):
             # Download subs locally
             meta["subtitles"] = await download_subs_local(video_id, remote_subs)
             meta["views"] = info.get('view_count', meta.get('views', 0))
-            if not meta.get('uploader') and info.get('uploader'):
-                meta["uploader"] = info.get('uploader')
+            if not meta.get('channel_id') and info.get('channel_id'):
+                meta["channel_id"] = info.get('channel_id') or info.get('uploader_id')
             
             # Local thumbnail check & download
             remote_thumb = info.get('thumbnail') or meta.get('thumbnail_remote')
@@ -324,6 +331,43 @@ async def refresh_meta_task(video_id: str, meta_path: str):
             with open(meta_path, 'w', encoding='utf-8') as fw:
                 json.dump(meta, fw, ensure_ascii=False, indent=4)
             print(f"Background metadata refresh COMPLETED for {video_id}")
+            
+            # --- AUTO-REPAIR HISTORY & PLAYLISTS ---
+            try:
+                # 1. Update History
+                if os.path.exists(HISTORY_FILE):
+                    with open(HISTORY_FILE, 'r+', encoding='utf-8') as f:
+                        hist = json.load(f)
+                        updated_h = False
+                        for item in hist:
+                            if item['id'] == video_id and not item.get('channel_id') and meta.get('channel_id'):
+                                item['channel_id'] = meta['channel_id']
+                                updated_h = True
+                        if updated_h:
+                            f.seek(0)
+                            json.dump(hist, f, ensure_ascii=False, indent=4)
+                            f.truncate()
+                            print(f" > History repaired for {video_id}")
+
+                # 2. Update Playlists
+                if os.path.exists(PLAYLISTS_FILE):
+                    with open(PLAYLISTS_FILE, 'r+', encoding='utf-8') as f:
+                        pl = json.load(f)
+                        updated_p = False
+                        for name in pl:
+                            for item in pl[name]:
+                                if item['id'] == video_id and not item.get('channel_id') and meta.get('channel_id'):
+                                    item['channel_id'] = meta['channel_id']
+                                    updated_p = True
+                        if updated_p:
+                            f.seek(0)
+                            json.dump(pl, f, ensure_ascii=False, indent=4)
+                            f.truncate()
+                            print(f" > Playlists repaired for {video_id}")
+
+            except Exception as e:
+                print(f"Auto-repair failed: {e}")
+
     except Exception as e:
         print(f"Background refresh failed for {video_id}: {e}")
 
@@ -339,9 +383,9 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
                 meta = json.load(f)
                 
             # TRIGGER ASYNC REFRESH if data is incomplete 
-            # (no subs, 0 views, or thumbnail is still pointing to internet)
+            # (no subs, 0 views, missing channel_id, or thumbnail is still pointing to internet)
             is_thumb_remote = meta.get("thumbnail", "").startswith("http")
-            if "subtitles" not in meta or meta.get("views", 0) == 0 or is_thumb_remote:
+            if "subtitles" not in meta or meta.get("views", 0) == 0 or is_thumb_remote or not meta.get("channel_id"):
                 background_tasks.add_task(refresh_meta_task, video_id, meta_path)
             
             # Filter subs: Only keep those that actually exist on disk, and clean labels
@@ -367,6 +411,7 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
                 "title": meta.get('title', 'Offline Video'),
                 "thumbnail": meta.get('thumbnail', ''),
                 "uploader": meta.get('uploader', 'Unknown Channel'),
+                "channel_id": meta.get('channel_id', ''),
                 "duration": meta.get('duration', 0),
                 "views": meta.get('views', 0),
                 "subtitles": final_subs
@@ -422,12 +467,25 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
                 "subtitles": subtitles,
                 "title": info.get('title'),
                 "uploader": video_info['uploader'],
+                "channel_id": video_info['channel_id'],
                 "duration": video_info['duration'],
                 "views": video_info['views']
             }
     except Exception as e:
         print(f"CRITICAL: get_stream failed for {video_id}: {e}")
         raise HTTPException(status_code=400, detail=f"Gagal mengambil stream: {str(e)}")
+
+
+@app.get("/get_video_meta/{video_id}")
+async def get_video_meta(video_id: str):
+    meta_path = os.path.join(META_DIR, f"{video_id}.json")
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
 
 @app.get("/list_offline")
 async def list_offline():
@@ -600,6 +658,75 @@ async def add_to_playlist(req: PlaylistVideoRequest):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/update_playlist_meta")
+async def update_playlist_meta(req: PlaylistVideoRequest):
+    try:
+        if not os.path.exists(PLAYLISTS_FILE): return {"status": "error", "message": "No playlists file"}
+        
+        with open(PLAYLISTS_FILE, 'r+', encoding='utf-8') as f:
+            playlists = json.load(f)
+            name = req.playlist_name
+            if name in playlists:
+                updated = False
+                for i, v in enumerate(playlists[name]):
+                    if v['id'] == req.video.id:
+                        # Update fields only if they are missing or empty in the stored version
+                        if not v.get('channel_id') and req.video.channel_id:
+                            v['channel_id'] = req.video.channel_id
+                            updated = True
+                        if not v.get('duration') and req.video.duration:
+                            v['duration'] = req.video.duration
+                            updated = True
+                        playlists[name][i] = v
+                        break
+                
+                if updated:
+                    f.seek(0)
+                    json.dump(playlists, f, ensure_ascii=False, indent=4)
+                    f.truncate()
+        return {"status": "success"}
+    except Exception as e:
+        print(f"Error updating playlist meta: {e}")
+        return {"status": "error", "detail": str(e)}
+
+        return {"status": "error", "detail": str(e)}
+
+@app.post("/update_playlist_channel_by_uploader")
+async def update_playlist_channel_by_uploader(data: dict):
+    try:
+        playlist_name = data.get("playlist_name")
+        uploader = data.get("uploader")
+        channel_id = data.get("channel_id")
+        
+        if not all([playlist_name, uploader, channel_id]):
+             return {"status": "ignored"}
+
+        if not os.path.exists(PLAYLISTS_FILE): return {"status": "error"}
+        
+        with open(PLAYLISTS_FILE, 'r+', encoding='utf-8') as f:
+            playlists = json.load(f)
+            if playlist_name in playlists:
+                updated = False
+                for i, v in enumerate(playlists[playlist_name]):
+                    # Match uploader loosely (handling quotes from frontend search queries)
+                    v_uploader = v.get('uploader', '')
+                    target_uploader = uploader.replace('"', '')
+                    if (v_uploader == target_uploader or v_uploader == uploader) and not v.get('channel_id'):
+                        v['channel_id'] = channel_id
+                        playlists[playlist_name][i] = v
+                        updated = True
+                
+                if updated:
+                    f.seek(0)
+                    json.dump(playlists, f, ensure_ascii=False, indent=4)
+                    f.truncate()
+                    return {"status": "repaired", "count": updated}
+        return {"status": "no_change"}
+    except Exception as e:
+        print(f"Error repairing playlist: {e}")
+        return {"status": "error", "detail": str(e)}
 
 @app.post("/create_playlist")
 async def create_playlist(data: dict):

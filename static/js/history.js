@@ -44,9 +44,11 @@ async function loadOffline() {
     $('#offlineGrid').html('<div class="col-span-full text-center py-20 opacity-30">Memeriksa koleksi...</div>');
     const data = await Helper.fetchJSON('/list_offline');
     if (data?.results?.length) {
+        // Sort Alphabetically by Title
+        const sorted = data.results.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
         $('#offlineEmpty').addClass('hidden');
-        $('#offlineGrid').html(data.results.map(v => Helper.renderVideoCard(v, 'offline')).join(''));
-        updatePlaylist(data.results, false);
+        $('#offlineGrid').html(sorted.map(v => Helper.renderVideoCard(v, 'offline')).join(''));
+        updatePlaylist(sorted, false);
     } else {
         $('#offlineGrid').empty();
         $('#offlineEmpty').removeClass('hidden');

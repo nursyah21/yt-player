@@ -184,7 +184,8 @@ def download_video_and_meta(video_id: str, video_info: dict):
             print(f"Threaded thumbnail download failed for {video_id}: {e}")
 
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        # Prioritize 360p or 480p (height <= 480) to save space and bandwidth
+        'format': 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[ext=mp4]/best',
         'outtmpl': base_name + ".%(ext)s",
         'quiet': True,
         'no_warnings': True,
@@ -825,4 +826,4 @@ async def delete_playlist(playlist_name: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)

@@ -29,7 +29,7 @@ async function loadPlaylists() {
 
     const playlists = await Helper.fetchJSON('/list_playlists');
     if (!playlists) return;
-    const names = Object.keys(playlists);
+    const names = Object.keys(playlists).sort((a, b) => a.localeCompare(b));
 
     if (!names.length) {
         $('#playlistGrid').html(`
@@ -68,7 +68,7 @@ async function openPlaylistSelector(event, video = null) {
 
     const playlists = await Helper.fetchJSON('/list_playlists');
     if (!playlists) return;
-    const names = Object.keys(playlists);
+    const names = Object.keys(playlists).sort((a, b) => a.localeCompare(b));
 
     if (!names.length) {
         $('#playlistOptions').html(`

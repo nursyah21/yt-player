@@ -6,22 +6,33 @@ echo =======================================
 echo.
 
 :: Masuk ke folder project
-cd /d "c:\Users\FUJITSU\yt-studio"
+cd /d "%~dp0"
 
-:: Jalankan server menggunakan python langsung dari venv (paling cepat, tanpa reload)
-echo 1. Memulai server (Fast Mode)...
+:: Cek apakah port 8000-8005 sudah ada yang dengerin (asumsi itu server kita)
+echo 1. Memeriksa apakah server sudah berjalan...
+
+set PORT=8000
+:check_port
+netstat -ano | findstr LISTENING | findstr :%PORT% > nul
+if %errorlevel% equ 0 (
+    echo [OK] Server ditemukan berjalan di port %PORT%.
+    goto open_browser
+)
+set /a PORT=%PORT%+1
+if %PORT% leq 8005 goto check_port
+
+:: Jika tidak ada yang jalan, nyalakan server baru
+echo [!] Server belum jalan. Memulai server baru...
 start "YT-Studio-Server" .\.venv\Scripts\python.exe main.py
+echo Menunggu inisialisasi server (3 detik)...
+timeout /t 3 /nobreak > nul
+set PORT=8000
 
-:: Tunggu sebentar agar server siap
-echo 2. Menunggu server siap dimuat (2 detik)...
-timeout /t 2 /nobreak > nul
-
-:: Buka browser
-echo 3. Membuka aplikasi di browser...
-start http://localhost:8000
+:open_browser
+echo 2. Membuka aplikasi di browser (Port %PORT%)...
+start http://localhost:%PORT%
 
 echo.
 echo Selesai! Selamat menonton.
-echo Jendela server akan tetap terbuka di background.
 timeout /t 2 > nul
 exit

@@ -30,5 +30,8 @@ Script ini akan otomatis:
 - Python 3.9+
 - Koneksi Internet (hanya untuk pengambilan video pertama kali)
 
+## 📸 Screenshot
+![Preview Aplikasi](image.png)
+
 ---
 *Dibuat dengan ❤️ untuk pengalaman menonton yang lebih bebas iklan dan hemat kuota.*

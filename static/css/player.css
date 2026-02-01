@@ -51,6 +51,60 @@
     flex-direction: column;
 }
 
+/* Mini Bar View (Floating Pill) */
+#playerContainer.mini-view {
+    bottom: 30px !important;
+    right: 30px !important;
+    width: 420px !important;
+    height: 64px !important;
+    display: flex !important;
+    align-items: center;
+    border-radius: 32px !important;
+    padding: 0 12px;
+    background: rgba(25, 25, 25, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6);
+}
+
+#playerContainer.mini-view .player-header {
+    width: 100%;
+    border-bottom: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+}
+
+#playerContainer.mini-view .player-content {
+    display: none !important;
+}
+
+#playerContainer.mini-view .player-title-info {
+    margin-right: 15px;
+    padding-left: 5px;
+}
+
+#playerContainer.mini-view #nowPlayingTitle {
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+
+#playerContainer.mini-view #nowPlayingUploader {
+    font-size: 11px;
+}
+
+#playerContainer.mini-view .player-header-actions {
+    gap: 4px;
+}
+
+#playerContainer.mini-view .player-action-btn {
+    width: 34px;
+    height: 34px;
+}
+
+
 .player-header {
     display: flex;
     align-items: center;

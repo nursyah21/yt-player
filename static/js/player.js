@@ -23,6 +23,12 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
         const url = new URL(window.location);
         url.searchParams.set('v', video.id);
         if (startTime > 0) url.searchParams.set('t', startTime);
+
+        // Handle initial screen state from URL if present
+        const screenMode = url.searchParams.get('screen');
+        if (screenMode === 'full') toggleExpand(true);
+        else if (screenMode === 'min') toggleMinimize(true);
+
         window.history.pushState({}, '', url);
     }
 
@@ -33,13 +39,20 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
     // 3. FAST PATH FOR OFFLINE VIDEOS
     if (video.is_offline && video.title !== "Loading...") {
         console.log("Fast-path: Starting offline playback immediately");
+        const h = video.height || 480;
         setupPlyr({
             stream_url: `/offline/${video.id}.mp4`,
-            formats: [{ url: `/offline/${video.id}.mp4`, quality: "Local", height: 480, is_local: true }],
+            formats: [{
+                url: `/offline/${video.id}.mp4`,
+                quality: `Local (${h}p)`,
+                height: h,
+                is_local: true
+            }],
             is_offline: true,
             title: video.title,
             uploader: video.uploader,
-            duration: video.duration
+            duration: video.duration,
+            is_mock: true // Mark as initial mock data
         }, video, startTime);
     }
 
@@ -64,28 +77,41 @@ function setupPlyr(data, video, startTime) {
     const $title = $('#nowPlayingTitle');
     const $uploader = $('#nowPlayingUploader');
 
-    // 0. PREVENT DOUBLE LOAD (Crucial to avoid WinError 10054)
-    // If player exists and is already playing this exact stream URL, just update metadata
+    // 0. SPEED MODE: If already playing this ID, update info and inject resolutions
     if (plyrPlayer && currentVideoObj && currentVideoObj.id === video.id) {
-        const currentSrc = document.querySelector('#videoPlayer')?.currentSrc || "";
-        // If it's already playing the same offline file or same stream, don't re-init
-        if (currentSrc.includes(data.stream_url) || (data.is_offline && currentSrc.includes(video.id))) {
-            console.log("Stream already active, skipping re-init.");
-            return;
+        $title.text(data.title || video.title);
+        $uploader.text(data.uploader || video.uploader || "YouTube");
+
+        if (!data.is_mock && !currentVideoObj.full_data_loaded) {
+            console.log("Injecting live qualities...");
+            const newSources = (data.formats || []).map(f => ({ src: f.url, type: 'video/mp4', size: f.height }));
+            if (newSources.length > 1) {
+                const curTime = plyrPlayer.currentTime;
+                const isPaused = plyrPlayer.paused;
+                plyrPlayer.source = {
+                    type: 'video',
+                    title: data.title || video.title,
+                    sources: newSources,
+                    tracks: (data.subtitles || []).filter(s => s.url.startsWith('/subs/')).map(s => ({
+                        kind: 'subtitles', label: s.label, srclang: s.lang, src: s.url
+                    }))
+                };
+                plyrPlayer.once('canplay', () => {
+                    plyrPlayer.currentTime = curTime;
+                    if (!isPaused) plyrPlayer.play().catch(() => { });
+                });
+            }
+            currentVideoObj.full_data_loaded = true;
         }
+        return;
     }
 
-    // Update Playlist & UI
-    const plIdx = currentPlaylist.findIndex(v => v.id === video.id);
-    if (plIdx !== -1) {
-        currentPlaylist[plIdx] = { ...currentPlaylist[plIdx], ...video, ...data };
-    }
-
+    // Update metadata immediately
     $title.text(data.title || video.title);
     $uploader.text(data.uploader || video.uploader || "YouTube");
     document.title = `${data.title || video.title} - Video Studio`;
 
-    // 1. RE-INITIALIZE PLYR BASE
+    // 1. RE-INITIALIZE ONLY ON NEW VIDEO
     if (plyrPlayer) {
         plyrPlayer.destroy();
     }
@@ -220,13 +246,32 @@ function playPrev() {
     if (currentIndex > 0) playVideo(currentPlaylist[currentIndex - 1]);
 }
 
-function toggleExpand() {
+function toggleMinimize(shouldMin = null) {
+    const $container = $('#playerContainer');
+    const $miniIcon = $('#miniIcon');
+    isMini = (shouldMin !== null) ? shouldMin : !isMini;
+
+    if (isMini) {
+        $container.addClass('mini-view');
+        $miniIcon.attr('class', 'fas fa-external-link-alt');
+        if (isExpanded) toggleExpand(false);
+    } else {
+        $container.removeClass('mini-view');
+        $miniIcon.attr('class', 'fas fa-minus');
+    }
+
+    updateScreenParam();
+}
+
+function toggleExpand(shouldExpand = null) {
     const $container = $('#playerContainer');
     const $backdrop = $('#playerBackdrop');
     const $icon = $('#expandIcon');
-    isExpanded = !isExpanded;
+
+    isExpanded = (shouldExpand !== null) ? shouldExpand : !isExpanded;
 
     if (isExpanded) {
+        if (isMini) toggleMinimize(false);
         $container.addClass('full-view');
         $backdrop.show();
         setTimeout(() => $backdrop.addClass('show'), 10);
@@ -240,9 +285,17 @@ function toggleExpand() {
         $('body').css('overflow', 'auto');
     }
 
+    updateScreenParam();
+}
+
+function updateScreenParam() {
     const url = new URL(window.location);
-    if (isExpanded) url.searchParams.set('full', 'true');
-    else url.searchParams.delete('full');
+    if (isExpanded) url.searchParams.set('screen', 'full');
+    else if (isMini) url.searchParams.set('screen', 'min');
+    else url.searchParams.delete('screen');
+
+    // Clean up old 'full' param if exists
+    url.searchParams.delete('full');
     window.history.replaceState({}, '', url);
 }
 
@@ -252,7 +305,8 @@ function closePlayer() {
     }
     if (plyrPlayer) plyrPlayer.stop();
     $('#playerContainer').hide();
-    if (isExpanded) toggleExpand();
+    if (isExpanded) toggleExpand(false);
+    if (isMini) toggleMinimize();
 
     const url = new URL(window.location);
     if (url.searchParams.has('v')) {
@@ -260,3 +314,4 @@ function closePlayer() {
         window.history.pushState({}, '', url);
     }
 }
+

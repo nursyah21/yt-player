@@ -229,8 +229,12 @@ def download_video_and_meta(video_id: str, video_info: dict):
     }
     
     try:
-        if not os.path.exists(final_mp4):
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+            if not video_info.get('height') and info.get('height'):
+                video_info['height'] = info['height']
+            
+            if not os.path.exists(final_mp4):
                 ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
         
         # Save meta only if not cancelled and exists
@@ -253,7 +257,7 @@ def download_video_and_meta(video_id: str, video_info: dict):
         active_downloads.pop(video_id, None)
 
 @app.post("/extract")
-async def extract_video(video_req: VideoRequest):
+def extract_video(video_req: VideoRequest):
     search_query = video_req.query.strip()
     offset = video_req.offset
     limit = 20
@@ -282,9 +286,19 @@ async def extract_video(video_req: VideoRequest):
             for entry in entries:
                 if entry:
                     video_id = entry.get('id')
+                    meta_path = os.path.join(META_DIR, f"{video_id}.json")
                     is_ready = os.path.exists(os.path.join(CACHE_DIR, f"{video_id}.mp4")) and \
-                               os.path.exists(os.path.join(META_DIR, f"{video_id}.json"))
+                               os.path.exists(meta_path)
                     
+                    # Try to get height from local meta if exists
+                    h = entry.get('height')
+                    if is_ready:
+                        try:
+                            with open(meta_path, 'r', encoding='utf-8') as f:
+                                m = json.load(f)
+                                if m.get('height'): h = m['height']
+                        except: pass
+
                     results.append({
                         "title": entry.get('title'),
                         "thumbnail": entry.get('thumbnails')[0]['url'] if entry.get('thumbnails') else entry.get('thumbnail'),
@@ -293,6 +307,7 @@ async def extract_video(video_req: VideoRequest):
                         "duration": entry.get('duration'),
                         "id": video_id,
                         "views": entry.get('view_count', 0),
+                        "height": h,
                         "is_offline": is_ready
                     })
 

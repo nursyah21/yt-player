@@ -1,5 +1,6 @@
 /* Global State */
 let isExpanded = false;
+let isMini = false;
 let isSidebarOpen = true;
 let currentOffset = 1;
 let isFetching = false;

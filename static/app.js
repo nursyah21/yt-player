@@ -23,12 +23,15 @@ let pendingRepairPlaylist = null;
 // --- Helpers ---
 const Helper = {
     async fetchJSON(url, options = {}) {
+        if (!options.hideProgress) NProgress.start();
         try {
             const res = await fetch(url, options);
             return res.ok ? await res.json() : null;
         } catch (e) {
             console.error("API Error:", e);
             return null;
+        } finally {
+            if (!options.hideProgress) NProgress.done();
         }
     },
 
@@ -88,18 +91,18 @@ const Helper = {
 
         return `
             <div class="video-card flex flex-col group">
-                <div class="thumbnail-box mb-3 cursor-pointer relative overflow-hidden" onclick="playVideo(${videoData})">
+                <a href="/?v=${video.id}" class="thumbnail-box mb-3 cursor-pointer relative overflow-hidden block" onclick="event.preventDefault(); playVideo(${videoData})">
                     ${actionBtn}
                     ${likeBtn}
                     <img src="${video.thumbnail}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
                     <div class="absolute bottom-2 right-2 bg-black/90 text-[10px] font-bold px-1.5 py-0.5 rounded text-gray-400">
                         ${video.duration ? this.formatTime(video.duration) : '0:00'}
                     </div>
-                </div>
+                </a>
                 <div class="px-1 flex flex-col">
-                    <div class="cursor-pointer" onclick="playVideo(${videoData})">
+                    <a href="/?v=${video.id}" class="cursor-pointer block" onclick="event.preventDefault(); playVideo(${videoData})">
                         <h3 class="font-bold text-[14px] text-white leading-tight line-clamp-2">${video.title}</h3>
-                    </div>
+                    </a>
                     <div class="mt-1.5 flex flex-col">
                         <a href="/?page=home&q=${video.channel_id ? encodeURIComponent('https://www.youtube.com/channel/' + video.channel_id + '/videos') : encodeURIComponent('"' + (video.uploader || 'Channel') + '"')}&uploader=${encodeURIComponent(video.uploader || 'Channel')}" 
                            class="text-[12px] text-gray-500 hover:text-white hover:underline transition cursor-pointer truncate max-w-[200px] block mb-0.5" 
@@ -117,6 +120,7 @@ const Helper = {
 
 // --- Initialization ---
 function init() {
+    NProgress.configure({ showSpinner: false });
     initSidebar();
     handleRouting();
     setupShimmer();
@@ -549,7 +553,7 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
         // If channel_id is missing (offline cache from old version), poll backend to see if auto-repair finished
         if (!video.channel_id) {
             setTimeout(async () => {
-                const freshMeta = await Helper.fetchJSON(`/get_video_meta/${video.id}`);
+                const freshMeta = await Helper.fetchJSON(`/get_video_meta/${video.id}`, { hideProgress: true });
                 if (freshMeta && freshMeta.channel_id) {
                     video.channel_id = freshMeta.channel_id;
                     // Update current playlist in memory
@@ -922,10 +926,14 @@ function renderPlaylist() {
         const isActive = index === currentIndex;
         const videoData = JSON.stringify(video).replace(/"/g, '&quot;');
         return `
-            <div class="playlist-item ${isActive ? 'active' : ''}" onclick="playVideo(${videoData})">
-                <img src="${video.thumbnail}">
+            <div class="playlist-item ${isActive ? 'active' : ''}">
+                <a href="/?v=${video.id}" onclick="event.preventDefault(); playVideo(${videoData})" class="block flex-shrink-0">
+                    <img src="${video.thumbnail}">
+                </a>
                 <div class="playlist-info">
-                    <div class="playlist-title">${video.title}</div>
+                    <a href="/?v=${video.id}" onclick="event.preventDefault(); playVideo(${videoData})" class="playlist-title block hover:text-blue-400 transition mb-0.5 text-inherit no-underline">
+                        ${video.title}
+                    </a>
                     <a href="/?page=home&q=${video.channel_id ? encodeURIComponent('https://www.youtube.com/channel/' + video.channel_id + '/videos') : encodeURIComponent('"' + (video.uploader || 'Channel') + '"')}&uploader=${encodeURIComponent(video.uploader || 'Channel')}"
                        class="playlist-uploader block" onclick="event.preventDefault(); searchChannel(event, '${video.channel_id || ''}', '${(video.uploader || 'Channel').replace(/'/g, "\\'")}')">
                         ${video.uploader || 'Channel'}

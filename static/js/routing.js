@@ -31,8 +31,10 @@ async function handleRouting() {
         $('#playlistView').show();
         $('#playlistBtn').addClass('text-blue-500');
     }
-    if (full === 'true' && !isExpanded) {
-        toggleExpand();
+    if (full === 'true' || params.get('screen') === 'full') {
+        if (!isExpanded) toggleExpand(true);
+    } else if (params.get('screen') === 'min') {
+        if (!isMini) toggleMinimize(true);
     }
 }
 

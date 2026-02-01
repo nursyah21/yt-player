@@ -23,14 +23,12 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
         const url = new URL(window.location);
         url.searchParams.set('v', video.id);
         if (startTime > 0) url.searchParams.set('t', startTime);
-
-        // Handle initial screen state from URL if present
-        const screenMode = url.searchParams.get('screen');
-        if (screenMode === 'full') toggleExpand(true);
-        else if (screenMode === 'min') toggleMinimize(true);
-
         window.history.pushState({}, '', url);
     }
+
+    // Sync playlist index
+    const foundIdx = currentPlaylist.findIndex(v => v.id === video.id);
+    if (foundIdx !== -1) currentIndex = foundIdx;
 
     // 2. PARALLEL FETCHES
     const dataPromise = Helper.fetchJSON(`/get_stream?video_id=${video.id}`);
@@ -77,13 +75,14 @@ function setupPlyr(data, video, startTime) {
     const $title = $('#nowPlayingTitle');
     const $uploader = $('#nowPlayingUploader');
 
-    // 0. SPEED MODE: If already playing this ID, update info and inject resolutions
-    if (plyrPlayer && currentVideoObj && currentVideoObj.id === video.id) {
+    // 0. UPDATE vs NEW LOAD CHECK
+    // If player exists AND it's the SAME video ID, just update resolutions/metadata
+    if (plyrPlayer && lastPlayedId === video.id) {
         $title.text(data.title || video.title);
         $uploader.text(data.uploader || video.uploader || "YouTube");
 
         if (!data.is_mock && !currentVideoObj.full_data_loaded) {
-            console.log("Injecting live qualities...");
+            console.log("Adding resolutions to current stream...");
             const newSources = (data.formats || []).map(f => ({ src: f.url, type: 'video/mp4', size: f.height }));
             if (newSources.length > 1) {
                 const curTime = plyrPlayer.currentTime;
@@ -106,12 +105,16 @@ function setupPlyr(data, video, startTime) {
         return;
     }
 
-    // Update metadata immediately
+    // 1. BRAND NEW LOAD
+    lastPlayedId = video.id; // Mark this ID as effectively playing
+    if (!data.is_mock) video.full_data_loaded = true;
+
+    // Update Meta
     $title.text(data.title || video.title);
     $uploader.text(data.uploader || video.uploader || "YouTube");
     document.title = `${data.title || video.title} - Video Studio`;
 
-    // 1. RE-INITIALIZE ONLY ON NEW VIDEO
+    // RE-INITIALIZE ONLY ON NEW VIDEO
     if (plyrPlayer) {
         plyrPlayer.destroy();
     }

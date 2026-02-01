@@ -8,7 +8,14 @@
     <link rel="icon" href="data:.">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="/static/style.css" rel="stylesheet">
+    <!-- Modular CSS -->
+    <link href="/static/css/base.css" rel="stylesheet">
+    <link href="/static/css/navigation.css" rel="stylesheet">
+    <link href="/static/css/layout.css" rel="stylesheet">
+    <link href="/static/css/cards.css" rel="stylesheet">
+    <link href="/static/css/player.css" rel="stylesheet">
+    <link href="/static/css/playlists.css" rel="stylesheet">
+    <link href="/static/css/components.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.css" />
@@ -32,6 +39,9 @@
         <div class="search-container">
             <i class="fas fa-search text-gray-500 ml-4"></i>
             <input type="text" id="videoQuery" placeholder="Cari video..." class="search-input" autocomplete="off">
+            <button id="clearSearchBtn" class="clear-search-btn hidden">
+                <i class="fas fa-times"></i>
+            </button>
             <div id="suggestionsDropdown" class="suggestions-dropdown"></div>
         </div>
 
@@ -60,6 +70,13 @@
             <i class="fas fa-list-alt"></i>
             <span>Playlist</span>
         </a>
+
+        <!-- Subscriptions Section -->
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-section-title">Subscription</div>
+        <div id="subscriptionList" class="flex flex-col gap-1 mt-1 pb-4">
+            <!-- Items injected by JS -->
+        </div>
     </aside>
 
     <main id="mainContent" class="main-content main-content-area">
@@ -158,8 +175,19 @@
     <div id="playerContainer">
         <div class="player-header">
             <div class="player-title-info">
-                <span id="nowPlayingTitle" class="truncate">Streaming</span>
-                <span id="nowPlayingUploader" class="truncate">YouTube</span>
+                <div class="flex items-center gap-3 w-full">
+                    <div class="flex flex-col min-w-0 flex-1">
+                        <span id="nowPlayingTitle" class="truncate block">Streaming</span>
+                        <div class="flex items-center gap-2">
+                            <span id="nowPlayingUploader" class="truncate text-xs text-gray-400">YouTube</span>
+                            <button id="subscribeBtn"
+                                class="text-xs text-[#cc0000] font-bold uppercase hover:text-red-500 transition ml-2"
+                                onclick="if(currentVideoObj) toggleSubscription(currentVideoObj.channel_id, currentVideoObj.uploader, null)">
+                                SUBSCRIBE
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="player-header-actions">
                 <button onclick="playPrev()" class="player-action-btn" title="Sebelumnya">
@@ -214,7 +242,17 @@
     </div>
 
     <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-    <script src="/static/app.js"></script>
+    <!-- Modular JavaScript -->
+    <script src="/static/js/globals.js"></script>
+    <script src="/static/js/helpers.js"></script>
+    <script src="/static/js/layout.js"></script>
+    <script src="/static/js/routing.js"></script>
+    <script src="/static/js/search.js"></script>
+    <script src="/static/js/player.js"></script>
+    <script src="/static/js/playlists.js"></script>
+    <script src="/static/js/subscriptions.js"></script>
+    <script src="/static/js/history.js"></script>
+    <script src="/static/js/init.js"></script>
 </body>
 
 </html>

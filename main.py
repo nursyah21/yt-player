@@ -51,13 +51,14 @@ DATA_DIR = "server_data"
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 SEARCH_HISTORY_FILE = os.path.join(DATA_DIR, "search_history.json")
 PLAYLISTS_FILE = os.path.join(DATA_DIR, "playlists.json")
+SUBSCRIPTIONS_FILE = os.path.join(DATA_DIR, "subscriptions.json")
 
 for d in [CACHE_DIR, META_DIR, SUB_DIR, THUMB_DIR, DATA_DIR]:
     if not os.path.exists(d):
         os.makedirs(d)
 
 # Initialize files if not exists
-for f_path in [HISTORY_FILE, SEARCH_HISTORY_FILE, PLAYLISTS_FILE]:
+for f_path in [HISTORY_FILE, SEARCH_HISTORY_FILE, PLAYLISTS_FILE, SUBSCRIPTIONS_FILE]:
     if not os.path.exists(f_path):
         with open(f_path, 'w', encoding='utf-8') as f:
             default_val = {} if f_path == PLAYLISTS_FILE else []
@@ -726,6 +727,54 @@ async def update_playlist_channel_by_uploader(data: dict):
         return {"status": "no_change"}
     except Exception as e:
         print(f"Error repairing playlist: {e}")
+        return {"status": "error", "detail": str(e)}
+
+@app.get("/list_subscriptions")
+async def list_subscriptions():
+    if not os.path.exists(SUBSCRIPTIONS_FILE): return {"results": []}
+    try:
+        with open(SUBSCRIPTIONS_FILE, 'r', encoding='utf-8') as f:
+            return {"results": json.load(f)}
+    except:
+        return {"results": []}
+
+@app.post("/toggle_subscription")
+async def toggle_subscription(data: dict):
+    try:
+        if not os.path.exists(SUBSCRIPTIONS_FILE): 
+            with open(SUBSCRIPTIONS_FILE, 'w') as f: json.dump([], f)
+            
+        with open(SUBSCRIPTIONS_FILE, 'r+', encoding='utf-8') as f:
+            subs = json.load(f)
+            
+            # Check existing
+            exist_idx = -1
+            for i, s in enumerate(subs):
+                # Match by ID if possible, else by name
+                if (data.get('channel_id') and s.get('channel_id') == data.get('channel_id')) or \
+                   (s.get('uploader') == data.get('uploader')):
+                    exist_idx = i
+                    break
+            
+            is_subscribed = False
+            if exist_idx != -1:
+                # Remove
+                subs.pop(exist_idx)
+            else:
+                # Add
+                subs.append({
+                    "uploader": data.get("uploader"),
+                    "channel_id": data.get("channel_id"),
+                    "thumbnail": data.get("thumbnail") # Store channel avatar if available
+                })
+                is_subscribed = True
+            
+            f.seek(0)
+            json.dump(subs, f, ensure_ascii=False, indent=4)
+            f.truncate()
+            
+        return {"status": "success", "is_subscribed": is_subscribed}
+    except Exception as e:
         return {"status": "error", "detail": str(e)}
 
 @app.post("/create_playlist")

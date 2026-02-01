@@ -9,6 +9,8 @@ import json
 import shutil
 import threading
 import httpx
+import urllib.parse
+from fastapi.responses import HTMLResponse, Response
 from datetime import datetime
 from contextlib import asynccontextmanager
 
@@ -253,8 +255,8 @@ def get_lang_name(lang_code: str):
     """Converts ISO language codes to readable names and cleans labels"""
     mapping = {
         'id': 'Indonesia', 'en': 'English', 'ja': 'Japanese', 'ko': 'Korean',
-        'zh': 'Chinese', 'zh-Hans': 'Chinese (Simplified)', 'zh-Hant': 'Chinese (Traditional)',
-        'zh-TW': 'Chinese (Taiwan)', 'zh-HK': 'Chinese (Hong Kong)',
+        'zh': 'Chinese', 'zh-hans': 'Chinese (Simplified)', 'zh-hant': 'Chinese (Traditional)',
+        'zh-tw': 'Chinese (Taiwan)', 'zh-hk': 'Chinese (Hong Kong)',
         'fr': 'French', 'es': 'Spanish', 'de': 'German', 'ru': 'Russian',
         'it': 'Italian', 'pt': 'Portuguese', 'vi': 'Vietnamese', 'th': 'Thai',
         'tr': 'Turkish', 'ar': 'Arabic', 'hi': 'Hindi', 'ms': 'Malay',
@@ -262,30 +264,82 @@ def get_lang_name(lang_code: str):
         'fi': 'Finnish', 'no': 'Norwegian', 'cs': 'Czech', 'el': 'Greek',
         'hu': 'Hungarian', 'ro': 'Romanian', 'sk': 'Slovak', 'uk': 'Ukrainian'
     }
+    # Clean language code (e.g., 'en-US' -> 'en', 'en-orig' -> 'en')
     clean_code = lang_code.split(' ')[0].split('-')[0].lower()
-    name = mapping.get(lang_code, mapping.get(clean_code, lang_code))
-    for tag in ["(Manual)", "(Auto)", "[auto]", "manual"]:
+    name = mapping.get(lang_code.lower(), mapping.get(clean_code, lang_code))
+    
+    # Remove common tags
+    for tag in ["(Manual)", "(Auto)", "[auto]", "manual", "ASR"]:
         name = name.replace(tag, "").strip()
     return name
 
+def download_subtitle(url, video_id, lang):
+    """Sync helper to download subtitle to local storage"""
+    local_name = f"{video_id}_{lang}.vtt"
+    local_path = os.path.join(SUB_DIR, local_name)
+    if os.path.exists(local_path):
+        return f"/subs/{local_name}"
+    
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.youtube.com/"
+        }
+        with httpx.Client() as client:
+            resp = client.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                with open(local_path, "wb") as f:
+                    f.write(resp.content)
+                return f"/subs/{local_name}"
+    except Exception as e:
+        print(f"Failed to download subtitle {lang}: {e}")
+    return None
+
 def extract_subtitles(info: dict):
-    """Helper to extract subtitles from yt-dlp info dict"""
+    """Helper to extract subtitles and download them locally to bypass bot protection"""
     subtitles = []
+    video_id = info.get('id')
+    preferred_langs = ['id', 'en', 'ko', 'ja', 'ms', 'zh']
+    
     captions = info.get('subtitles', {})
     auto_captions = info.get('automatic_captions', {})
-    
-    for lang, lang_info in captions.items():
-        vtt_sub = next((s['url'] for s in lang_info if s.get('ext') == 'vtt'), None)
+    processed_langs = set()
+
+    def add_sub(c_lang, c_info, is_auto=False):
+        vtt_sub = next((s['url'] for s in c_info if s.get('ext') == 'vtt'), None)
         if vtt_sub:
-            subtitles.append({"lang": lang, "url": vtt_sub, "label": get_lang_name(lang)})
-    
+            local_url = download_subtitle(vtt_sub, video_id, c_lang)
+            if local_url:
+                lbl = get_lang_name(c_lang)
+                suffix = " (Auto)" if is_auto else ""
+                subtitles.append({"lang": c_lang, "url": local_url, "label": f"{lbl}{suffix}"})
+                processed_langs.add(c_lang.split('-')[0].lower())
+                return True
+        return False
+
+    # 1. Manual Subtitles (Preferred)
+    for lang in preferred_langs:
+        for c_lang, c_info in captions.items():
+            if c_lang.split('-')[0].lower() == lang:
+                add_sub(c_lang, c_info)
+
+    # 2. Add other manual if we have few
+    if len(subtitles) < 5:
+        for c_lang, c_info in captions.items():
+            if c_lang.split('-')[0].lower() not in processed_langs:
+                if add_sub(c_lang, c_info):
+                    if len(subtitles) >= 8: break
+
+    # 3. Auto-Captions (Fallback)
     if not subtitles:
-        for lang, lang_info in auto_captions.items():
-            vtt_sub = next((s['url'] for s in lang_info if s.get('ext') == 'vtt'), None)
-            if vtt_sub:
-                subtitles.append({"lang": lang, "url": vtt_sub, "label": get_lang_name(lang)})
+        for lang in ['id', 'en']:
+            for c_lang, c_info in auto_captions.items():
+                if c_lang.split('-')[0].lower() == lang:
+                    add_sub(c_lang, c_info, is_auto=True)
     
     return subtitles
+
+
 
 async def refresh_meta_task(video_id: str, meta_path: str):
     """Refreshes metadata (subtitles, views, thumbnails) and downloads them locally"""
@@ -346,65 +400,121 @@ async def get_stream(video_id: str, background_tasks: BackgroundTasks):
     local_file = os.path.join(CACHE_DIR, f"{video_id}.mp4")
     meta_path = os.path.join(META_DIR, f"{video_id}.json")
     
+    local_format = None
+    existing_meta = {}
+    
+    # 1. Cek apakah ada file lokal
     if os.path.exists(local_file) and os.path.exists(meta_path):
         try:
             with open(meta_path, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
+                existing_meta = json.load(f)
             
-            is_thumb_remote = meta.get("thumbnail", "").startswith("http")
-            if "subtitles" not in meta or meta.get("views", 0) == 0 or is_thumb_remote or not meta.get("channel_id"):
-                background_tasks.add_task(refresh_meta_task, video_id, meta_path)
-            
-            final_subs = []
-            for s in meta.get('subtitles', []):
-                s['label'] = get_lang_name(s['label'] if ' ' not in s['label'] else s['lang'])
-                if s['url'].startswith('/subs/'):
-                    file_part = s['url'].replace('/subs/', '')
-                    if os.path.exists(os.path.join(SUB_DIR, file_part)):
-                        final_subs.append(s)
-            
-            return {
-                "stream_url": f"/offline/{video_id}.mp4", 
-                "is_offline": True, 
-                "status": "playing_offline",
-                "title": meta.get('title', 'Offline Video'),
-                "thumbnail": meta.get('thumbnail', ''),
-                "uploader": meta.get('uploader', 'Unknown Channel'),
-                "channel_id": meta.get('channel_id', ''),
-                "duration": meta.get('duration', 0),
-                "views": meta.get('views', 0),
-                "subtitles": final_subs
+            # Deteksi resolusi lokal (default 480 jika tidak tercatat)
+            h = existing_meta.get('height', 480)
+            local_format = {
+                "url": f"/offline/{video_id}.mp4", 
+                "quality": f"Local ({h}p)", 
+                "height": h,
+                "is_local": True
             }
-        except:
-            return {"stream_url": f"/offline/{video_id}.mp4", "is_offline": True, "status": "playing_offline"}
+            
+            # Jalankan refresh background jika data kurang lengkap
+            is_thumb_remote = existing_meta.get("thumbnail", "").startswith("http")
+            if "subtitles" not in existing_meta or existing_meta.get("views", 0) == 0 or is_thumb_remote or not existing_meta.get("channel_id"):
+                background_tasks.add_task(refresh_meta_task, video_id, meta_path)
+                
+        except Exception as e:
+            print(f"Error loading meta: {e}")
+
+    # Helper to format size
+    def format_size(bytes):
+        if not bytes: return ""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if bytes < 1024: return f"{bytes:.1f}{unit}"
+            bytes /= 1024
+        return f"{bytes:.1f}TB"
+
+    # 2. Ambil format dari YouTube (Online)
+    ydl_opts = {'format': 'best', 'quiet': True, 'no_warnings': True, 'writesubtitles': True, 'allsubtitles': True}
+    unique_formats = []
+    online_info = {}
     
-    ydl_opts = {'format': 'best/bestvideo+bestaudio', 'quiet': True, 'no_warnings': True, 'writesubtitles': True, 'allsubtitles': True}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+            online_info = info
             subtitles = extract_subtitles(info)
-            stream_url = info.get('url')
-            if not stream_url and info.get('formats'):
-                formats = [f for f in info['formats'] if f.get('url') and (f.get('acodec') != 'none' or f.get('vcodec') != 'none')]
-                if formats: stream_url = formats[-1]['url']
-
-            if not stream_url: raise Exception("Tidak dapat menemukan stream URL")
-
-            video_info = {
-                "id": video_id, "title": info.get('title'), "thumbnail": info.get('thumbnail'),
-                "uploader": info.get('uploader') or info.get('channel'),
-                "channel_id": info.get('channel_id') or info.get('uploader_id'),
-                "duration": info.get('duration'), "views": info.get('view_count', 0),
-                "is_offline": True, "subtitles": subtitles
-            }
-            threading.Thread(target=download_video_and_meta, args=(video_id, video_info), daemon=True).start()
-            return {
-                "stream_url": stream_url, "is_offline": False, "status": "fetching_to_offline",
-                "subtitles": subtitles, "title": info.get('title'), "uploader": video_info['uploader'],
-                "channel_id": video_info['channel_id'], "duration": video_info['duration'], "views": video_info['views']
-            }
+            
+            available_formats = []
+            for f in info.get('formats', []):
+                if f.get('url') and f.get('acodec') != 'none' and f.get('vcodec') != 'none':
+                    h = f.get('height') or 0
+                    size_bytes = f.get('filesize') or f.get('filesize_approx')
+                    size_str = format_size(size_bytes) if size_bytes else "Stream"
+                    
+                    available_formats.append({
+                        "url": f['url'],
+                        "quality": f"{h}p ({size_str})",
+                        "height": h,
+                        "is_local": False
+                    })
+            
+            available_formats.sort(key=lambda x: x['height'], reverse=True)
+            seen_heights = set()
+            for f in available_formats:
+                # We group by height, but prioritize the one with exact filesize if available
+                if f['height'] not in seen_heights:
+                    unique_formats.append(f)
+                    seen_heights.add(f['height'])
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Gagal mengambil stream: {str(e)}")
+        print(f"Could not fetch online formats: {e}")
+        if local_format:
+            unique_formats = [local_format]
+            online_info = existing_meta
+            subtitles = existing_meta.get('subtitles', [])
+        else:
+            raise HTTPException(status_code=400, detail="Video tidak tersedia (Offline dan tidak ada cache)")
+
+    # 3. Gabungkan Format Lokal
+    if local_format:
+        # Get actual file size of local file
+        try:
+            l_size = os.path.getsize(local_file)
+            local_format["quality"] = f"Local ({local_format['height']}p - {format_size(l_size)})"
+        except: pass
+        
+        # Remove equivalent online height to prefer local
+        unique_formats = [f for f in unique_formats if not (f['height'] == local_format['height'] and not f['is_local'])]
+        unique_formats.insert(0, local_format)
+
+    # 4. Final Data
+    video_info_to_save = {
+        "id": video_id, 
+        "title": online_info.get('title') or existing_meta.get('title'),
+        "thumbnail": online_info.get('thumbnail') or existing_meta.get('thumbnail'),
+        "uploader": online_info.get('uploader') or online_info.get('channel') or existing_meta.get('uploader'),
+        "channel_id": online_info.get('channel_id') or online_info.get('uploader_id') or existing_meta.get('channel_id'),
+        "duration": online_info.get('duration') or existing_meta.get('duration'),
+        "views": online_info.get('view_count', 0) or existing_meta.get('views', 0),
+        "is_offline": True, 
+        "subtitles": subtitles if 'subtitles' in locals() else existing_meta.get('subtitles', [])
+    }
+    
+    if not local_format:
+        threading.Thread(target=download_video_and_meta, args=(video_id, video_info_to_save), daemon=True).start()
+
+    return {
+        "stream_url": unique_formats[0]['url'], 
+        "formats": unique_formats,
+        "is_offline": bool(local_format), 
+        "status": "playing" if local_format else "fetching_to_offline",
+        "subtitles": video_info_to_save['subtitles'],
+        "title": video_info_to_save['title'],
+        "uploader": video_info_to_save['uploader'],
+        "channel_id": video_info_to_save['channel_id'],
+        "duration": video_info_to_save['duration'],
+        "views": video_info_to_save['views']
+    }
 
 @app.get("/get_video_meta/{video_id}")
 async def get_video_meta(video_id: str):

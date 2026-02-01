@@ -9,20 +9,6 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
     $title.text("Connecting...");
     $uploader.text("Please wait...");
     currentVideoObj = video;
-
-    if (!plyrPlayer) {
-        plyrPlayer = new Plyr('#videoPlayer', {
-            controls: [
-                'play-large', 'play', 'progress', 'current-time', 'mute', 'volume',
-                'captions', 'settings', 'pip', 'airplay', 'fullscreen'
-            ],
-            settings: ['captions', 'quality', 'speed'],
-            invertTime: false,
-            tooltips: { controls: true, seek: true }
-        });
-        plyrPlayer.on('ended', () => playNext());
-    }
-
     if (updateUrl) {
         const url = new URL(window.location);
         url.searchParams.set('v', video.id);
@@ -45,7 +31,6 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
         if (data.duration) video.duration = data.duration;
         if (data.views) video.views = data.views;
 
-        // Sync metadata to playlist info
         const plIdx = currentPlaylist.findIndex(v => v.id === video.id);
         if (plIdx !== -1) {
             currentPlaylist[plIdx] = { ...currentPlaylist[plIdx], ...video };
@@ -66,26 +51,69 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
                         currentPlaylist[plIdx].channel_id = freshMeta.channel_id;
                         if ($('#playlistView').is(':visible')) renderPlaylist();
                     }
-                    if (activeSection === 'playlist') {
-                        const pname = $('#currentPlaylistName').text();
-                        if (pname) Helper.post('/update_playlist_meta', { playlist_name: pname, video: video });
-                    }
                 }
             }, 4000);
         }
+
+        const qualityLabels = {};
+        const sources = (data.formats || []).map(f => {
+            qualityLabels[f.height] = f.quality;
+            return { src: f.url, type: 'video/mp4', size: f.height };
+        });
+
+        if (sources.length === 0) {
+            sources.push({ src: data.stream_url, type: 'video/mp4', size: 0 });
+        }
+
+        // RE-INITIALIZE PLYR TO ENSURE LABELS ARE UPDATED
+        if (plyrPlayer) {
+            plyrPlayer.destroy();
+        }
+
+        plyrPlayer = new Plyr('#videoPlayer', {
+            controls: [
+                'play-large', 'play', 'progress', 'current-time', 'mute', 'volume',
+                'captions', 'settings', 'pip', 'airplay', 'fullscreen'
+            ],
+            settings: ['captions', 'quality', 'speed'],
+            quality: {
+                default: sources[0].size,
+                options: sources.map(s => s.size)
+            },
+            i18n: { quality: qualityLabels },
+            invertTime: false,
+            tooltips: { controls: true, seek: true }
+        });
+
+        // HACK: Plyr often ignores i18n for quality menu items. We force it via MutationObserver.
+        const observer = new MutationObserver(() => {
+            const qualityButtons = document.querySelectorAll('.plyr__menu__container [data-plyr="quality"]');
+            qualityButtons.forEach(btn => {
+                const val = btn.getAttribute('value');
+                if (qualityLabels[val]) {
+                    const span = btn.querySelector('span');
+                    if (span && span.textContent !== qualityLabels[val]) {
+                        span.textContent = qualityLabels[val];
+                    }
+                }
+            });
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        plyrPlayer.on('ended', () => playNext());
 
         const tracks = (data.subtitles || []).map(sub => ({
             kind: 'subtitles',
             label: sub.label,
             srclang: sub.lang,
             src: sub.url,
-            default: sub.lang === 'id' || sub.lang === 'en'
+            default: sub.lang === 'id' || sub.lang === 'en' || sub.label.includes('Indonesia')
         }));
 
         plyrPlayer.source = {
             type: 'video',
             title: video.title,
-            sources: [{ src: data.stream_url, type: 'video/mp4' }],
+            sources: sources,
             tracks: tracks
         };
 

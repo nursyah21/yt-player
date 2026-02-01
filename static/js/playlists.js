@@ -2,15 +2,19 @@
 function updatePlaylist(videos, append = false) {
     currentPlaylist = append ? [...currentPlaylist, ...videos] : [...videos];
 
-    const isFullView = $('#playerContainer').hasClass('full-view');
     const $view = $('#playlistView');
+    const params = new URLSearchParams(window.location.search);
+    const shouldShow = $view.is(':visible') || params.get('pl') === 'open';
 
-    if (isFullView && currentPlaylist.length > 0) {
+    if (shouldShow && currentPlaylist.length > 0) {
         $view.show();
         $('#playlistBtn').addClass('text-blue-500');
         renderPlaylist();
-    } else if ($view.is(':visible')) {
-        renderPlaylist();
+    } else {
+        // If it's not supposed to be shown, ensure it's hidden and button state is correct
+        if (!$view.is(':visible')) {
+            $('#playlistBtn').removeClass('text-blue-500');
+        }
     }
 }
 

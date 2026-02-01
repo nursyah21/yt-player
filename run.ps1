@@ -7,4 +7,5 @@ if (Test-Path ".\.venv\Scripts\Activate.ps1") {
 }
 
 # 2. Jalankan Server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+$env:RELOAD = "true"
+python main.py

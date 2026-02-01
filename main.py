@@ -28,14 +28,7 @@ def get_ips():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    local_ip = get_ips()
-    # The port display will be handled by the launcher or the initial uvicorn log
-    # For programmatic access to current port, we can't easily get it here during startup before bind
-    print("\n" + "="*50)
-    print("   YT-STUDIO - SERVER RUNNING")
-    print("="*50)
-    print(f"  > Network IP detected: {local_ip}")
-    print("="*50 + "\n")
+    # Logika startup lainnya bisa ditaruh di sini jika ada
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -632,5 +625,16 @@ if __name__ == "__main__":
     port = 8000
     while is_port_in_use(port):
         port += 1
-        if port > 8010: break
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+        if port > 8100: break
+    
+    local_ip = get_ips()
+    print("\n" + "="*50)
+    print("   YT-STUDIO - SERVER RUNNING")
+    print("="*50)
+    print(f"  > Local:   http://localhost:{port}")
+    print(f"  > Network: http://{local_ip}:{port}")
+    print("="*50 + "\n")
+    
+    # Ambil status reload dari env (default False jika tidak diset)
+    reload_env = os.getenv("RELOAD", "false").lower() == "true"
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload_env)

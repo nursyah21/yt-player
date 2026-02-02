@@ -63,7 +63,7 @@ async function openPlaylistSelector(event, video = null) {
     if (event) { event.preventDefault(); event.stopPropagation(); }
     pendingPlaylistVideo = video || currentVideoObj;
     if (!pendingPlaylistVideo?.id || pendingPlaylistVideo.id === 'Loading...') {
-        alert("Pilih video atau tunggu pemuatan selesai.");
+        Helper.showToast('Pilih video atau tunggu pemuatan selesai', 'warning');
         return;
     }
 
@@ -96,7 +96,7 @@ async function addToCustomPlaylist(name) {
     if (!pendingPlaylistVideo) return;
     const res = await Helper.post('/add_to_playlist', { playlist_name: name, video: pendingPlaylistVideo });
     if (res) {
-        alert(`Disimpan ke "${name}"`);
+        Helper.showToast(`Disimpan ke "${name}"`, 'success');
         closePlaylistModal();
         if (activeSection === 'playlist') loadPlaylists();
     }
@@ -104,16 +104,20 @@ async function addToCustomPlaylist(name) {
 
 function closePlaylistModal() { $('#playlistModal').hide(); pendingPlaylistVideo = null; }
 
-function promptCreatePlaylist() {
-    const name = prompt("Nama Playlist Baru:");
+async function promptCreatePlaylist() {
+    const name = await Helper.prompt('Masukkan nama playlist baru', '', 'Buat Playlist');
     if (name?.trim()) addToCustomPlaylist(name.trim());
 }
 
 async function deletePlaylist(event, name) {
     event.stopPropagation();
-    if (confirm(`Hapus playlist "${name}"?`)) {
+    const confirmed = await Helper.confirm(`Apakah Anda yakin ingin menghapus playlist "${name}"?`, 'Hapus Playlist');
+    if (confirmed) {
         const ok = await Helper.fetchJSON(`/delete_playlist/${name}`, { method: 'DELETE' });
-        if (ok !== null) loadPlaylists();
+        if (ok !== null) {
+            Helper.showToast(`Playlist "${name}" berhasil dihapus`, 'success');
+            loadPlaylists();
+        }
     }
 }
 
@@ -143,9 +147,13 @@ async function showPlaylistDetail(name, updateUrl = true) {
 
 async function removeFromPlaylist(event, playlistName, videoId) {
     event.stopPropagation();
-    if (confirm('Hapus dari playlist?')) {
+    const confirmed = await Helper.confirm('Apakah Anda yakin ingin menghapus video ini dari playlist?', 'Hapus Video');
+    if (confirmed) {
         const ok = await Helper.fetchJSON(`/delete_from_playlist/${playlistName}/${videoId}`, { method: 'DELETE' });
-        if (ok !== null) showPlaylistDetail(playlistName);
+        if (ok !== null) {
+            Helper.showToast('Video berhasil dihapus dari playlist', 'success');
+            showPlaylistDetail(playlistName);
+        }
     }
 }
 

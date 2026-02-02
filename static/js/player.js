@@ -72,7 +72,7 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
             currentVideoObj = { ...video, ...data };
             setupPlyr(data, video, startTime);
         } else if (!video.is_offline) {
-            alert("Gagal memutar video.");
+            Helper.showToast('Gagal memutar video. Silakan coba lagi.', 'error');
         }
     } catch (error) {
         console.error("Error loading video:", error);

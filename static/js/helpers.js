@@ -124,6 +124,157 @@ const Helper = {
                     </div>
                 </div>
             </div>`;
+    },
+
+    // Toast Notification System
+    showToast(message, type = 'info', duration = 3000, title = null) {
+        const container = $('#toastContainer');
+        const toastId = 'toast-' + Date.now();
+
+        const icons = {
+            success: 'fa-check-circle',
+            error: 'fa-exclamation-circle',
+            warning: 'fa-exclamation-triangle',
+            info: 'fa-info-circle'
+        };
+
+        const titles = {
+            success: title || 'Berhasil',
+            error: title || 'Error',
+            warning: title || 'Peringatan',
+            info: title || 'Info'
+        };
+
+        const toast = $(`
+            <div id="${toastId}" class="toast ${type}">
+                <div class="toast-icon">
+                    <i class="fas ${icons[type]}"></i>
+                </div>
+                <div class="toast-content">
+                    <div class="toast-title">${titles[type]}</div>
+                    <div class="toast-message">${message}</div>
+                </div>
+                <div class="toast-close">
+                    <i class="fas fa-times"></i>
+                </div>
+            </div>
+        `);
+
+        container.append(toast);
+
+        // Close button handler
+        toast.find('.toast-close').on('click', () => {
+            this.removeToast(toastId);
+        });
+
+        // Auto remove after duration
+        if (duration > 0) {
+            setTimeout(() => {
+                this.removeToast(toastId);
+            }, duration);
+        }
+
+        return toastId;
+    },
+
+    removeToast(toastId) {
+        const toast = $(`#${toastId}`);
+        if (toast.length) {
+            toast.addClass('hiding');
+            setTimeout(() => toast.remove(), 300);
+        }
+    },
+
+    // Toast Confirm (replacement for window.confirm)
+    confirm(message, title = 'Konfirmasi') {
+        return new Promise((resolve) => {
+            const container = $('#toastContainer');
+            const toastId = 'toast-confirm-' + Date.now();
+
+            const toast = $(`
+                <div id="${toastId}" class="toast warning">
+                    <div class="toast-icon">
+                        <i class="fas fa-question-circle"></i>
+                    </div>
+                    <div class="toast-content">
+                        <div class="toast-title">${title}</div>
+                        <div class="toast-message">${message}</div>
+                        <div class="toast-actions">
+                            <button class="toast-btn toast-btn-secondary" data-action="cancel">Batal</button>
+                            <button class="toast-btn toast-btn-primary" data-action="confirm">Ya</button>
+                        </div>
+                    </div>
+                    <div class="toast-close">
+                        <i class="fas fa-times"></i>
+                    </div>
+                </div>
+            `);
+
+            container.append(toast);
+
+            const cleanup = (result) => {
+                this.removeToast(toastId);
+                resolve(result);
+            };
+
+            toast.find('[data-action="confirm"]').on('click', () => cleanup(true));
+            toast.find('[data-action="cancel"]').on('click', () => cleanup(false));
+            toast.find('.toast-close').on('click', () => cleanup(false));
+        });
+    },
+
+    // Toast Prompt (replacement for window.prompt)
+    prompt(message, defaultValue = '', title = 'Input') {
+        return new Promise((resolve) => {
+            const container = $('#toastContainer');
+            const toastId = 'toast-prompt-' + Date.now();
+
+            const toast = $(`
+                <div id="${toastId}" class="toast info">
+                    <div class="toast-icon">
+                        <i class="fas fa-edit"></i>
+                    </div>
+                    <div class="toast-content">
+                        <div class="toast-title">${title}</div>
+                        <div class="toast-message">${message}</div>
+                        <input type="text" class="toast-input" value="${defaultValue}" placeholder="Masukkan nilai...">
+                        <div class="toast-actions">
+                            <button class="toast-btn toast-btn-secondary" data-action="cancel">Batal</button>
+                            <button class="toast-btn toast-btn-primary" data-action="submit">OK</button>
+                        </div>
+                    </div>
+                    <div class="toast-close">
+                        <i class="fas fa-times"></i>
+                    </div>
+                </div>
+            `);
+
+            container.append(toast);
+
+            const input = toast.find('.toast-input');
+            input.focus();
+
+            const cleanup = (result) => {
+                this.removeToast(toastId);
+                resolve(result);
+            };
+
+            toast.find('[data-action="submit"]').on('click', () => {
+                const value = input.val().trim();
+                cleanup(value || null);
+            });
+
+            toast.find('[data-action="cancel"]').on('click', () => cleanup(null));
+            toast.find('.toast-close').on('click', () => cleanup(null));
+
+            // Submit on Enter
+            input.on('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const value = input.val().trim();
+                    cleanup(value || null);
+                }
+            });
+        });
     }
 };
 

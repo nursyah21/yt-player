@@ -26,9 +26,13 @@ async function loadHistory() {
 }
 
 async function clearHistory() {
-    if (confirm('Bersihkan semua histori dari server?')) {
+    const confirmed = await Helper.confirm('Apakah Anda yakin ingin menghapus semua histori?', 'Hapus Semua Histori');
+    if (confirmed) {
         const res = await fetch('/clear_history', { method: 'POST' });
-        if (res.ok) loadHistory();
+        if (res.ok) {
+            Helper.showToast('Semua histori berhasil dihapus', 'success');
+            loadHistory();
+        }
     }
 }
 
@@ -54,13 +58,14 @@ async function deleteOfflineItem(event, videoId) {
         event.stopImmediatePropagation();
     }
 
-    // Gunakan setTimeout agar dialog confirm tidak memblokir penanganan event klik
-    setTimeout(async () => {
-        if (confirm('Hapus dari penyimpanan offline?')) {
-            const res = await fetch(`/delete_offline/${videoId}`, { method: 'DELETE' });
-            if (res.ok) loadOffline();
+    const confirmed = await Helper.confirm('Apakah Anda yakin ingin menghapus video ini dari penyimpanan offline?', 'Hapus Video Offline');
+    if (confirmed) {
+        const res = await fetch(`/delete_offline/${videoId}`, { method: 'DELETE' });
+        if (res.ok) {
+            Helper.showToast('Video berhasil dihapus dari offline', 'success');
+            loadOffline();
         }
-    }, 10);
+    }
 }
 
 async function deleteHistoryItem(event, videoId) {
@@ -70,10 +75,12 @@ async function deleteHistoryItem(event, videoId) {
         event.stopImmediatePropagation();
     }
 
-    setTimeout(async () => {
-        if (confirm('Hapus dari histori tontonan?')) {
-            const res = await fetch(`/delete_history/${videoId}`, { method: 'DELETE' });
-            if (res.ok) loadHistory();
+    const confirmed = await Helper.confirm('Apakah Anda yakin ingin menghapus video ini dari histori?', 'Hapus dari Histori');
+    if (confirmed) {
+        const res = await fetch(`/delete_history/${videoId}`, { method: 'DELETE' });
+        if (res.ok) {
+            Helper.showToast('Video berhasil dihapus dari histori', 'success');
+            loadHistory();
         }
-    }, 10);
+    }
 }

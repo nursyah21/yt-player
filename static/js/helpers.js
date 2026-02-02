@@ -13,11 +13,12 @@ const Helper = {
         }
     },
 
-    async post(url, data) {
+    async post(url, data, options = {}) {
         return this.fetchJSON(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            body: JSON.stringify(data),
+            hideProgress: options.hideProgress
         });
     },
 

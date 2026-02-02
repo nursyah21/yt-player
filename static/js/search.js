@@ -124,15 +124,14 @@ async function searchVideos(customQuery = null, displayName = null, updateUrl = 
     showSection('home', null, false);
     $('#resultsGrid').empty();
 
-    // NProgress Loader
-    NProgress.start();
     document.title = `Cari: ${displayName || query} - Video Studio`;
 
     try {
         isFetching = true;
         if (!query.startsWith('http')) {
-            Helper.post('/save_search_history', { query });
+            Helper.post('/save_search_history', { query }, { hideProgress: true });
         }
+        // NProgress akan otomatis start dan done dari Helper.post()
         const data = await Helper.post('/extract', { query, offset: currentOffset });
         if (data?.results) {
             const valid = data.results.filter(v => v.duration && v.duration !== "00:00");
@@ -152,18 +151,14 @@ async function searchVideos(customQuery = null, displayName = null, updateUrl = 
                         playlist_name: pendingRepairPlaylist,
                         uploader: displayName,
                         channel_id: data.found_channel_id
-                    });
+                    }, { hideProgress: true });
                     console.log("Repairing playlist:", pendingRepairPlaylist, displayName);
                     pendingRepairPlaylist = null;
                 }
             }
         }
     } finally {
-        // Yield to UI thread to ensure cards are painted before stopping loader
-        setTimeout(() => {
-            NProgress.done();
-            isFetching = false;
-        }, 50);
+        isFetching = false;
     }
 }
 

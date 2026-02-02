@@ -34,8 +34,7 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
     const foundIdx = currentPlaylist.findIndex(v => v.id === video.id);
     if (foundIdx !== -1) currentIndex = foundIdx;
 
-    // 2. PARALLEL FETCHES
-    NProgress.start();
+    // 2. PARALLEL FETCHES (NProgress akan otomatis dari Helper.fetchJSON)
     const dataPromise = Helper.fetchJSON(`/get_stream?video_id=${video.id}`);
     saveToHistory(video);
 
@@ -57,7 +56,6 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
             duration: video.duration,
             is_mock: true // Mark as initial mock data
         }, video, startTime);
-        setTimeout(() => NProgress.done(), 100);
     }
 
     // 4. WAIT FOR FULL DATA
@@ -76,8 +74,8 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
         } else if (!video.is_offline) {
             alert("Gagal memutar video.");
         }
-    } finally {
-        setTimeout(() => NProgress.done(), 100);
+    } catch (error) {
+        console.error("Error loading video:", error);
     }
 }
 

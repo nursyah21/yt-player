@@ -196,12 +196,14 @@ async function extractSubtitles(info) {
 // Helper: Refresh Meta Task
 async function refreshMetaTask(videoId, metaPath) {
     try {
-        const args = ['--quiet', '--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`];
+        const args = ['-m', 'yt_dlp', '--quiet', '--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`];
         const stdout = await new Promise((resolve, reject) => {
-            const p = spawn('yt-dlp', args);
+            const p = spawn('python', args);
             let so = '';
+            let se = '';
             p.stdout.on('data', d => so += d.toString());
-            p.on('close', code => code === 0 ? resolve(so) : reject(new Error('yt-dlp failed')));
+            p.stderr.on('data', d => se += d.toString());
+            p.on('close', code => code === 0 ? resolve(so) : reject(new Error(se || 'yt-dlp failed')));
         });
         const info = JSON.parse(stdout);
         const meta = await fs.readJson(metaPath);
@@ -281,14 +283,19 @@ async function downloadVideoAndMeta(videoId, videoInfo) {
     }
 
     const args = [
-        '--format', 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[ext=mp4]/best',
-        '--outtmpl', `${baseName}.%(ext)s`,
-        '--quiet', '--no-warnings', '--merge-output-format', 'mp4',
-        '--concurrent-fragment-downloads', '5',
+        '-m', 'yt_dlp',
+        '--format', 'best[height<=480][ext=mp4]/bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]/best',
+        '--output', `${baseName}.%(ext)s`,
+        '--quiet', '--no-warnings',
+        '--concurrent-fragments', '2',
         `https://www.youtube.com/watch?v=${videoId}`
     ];
 
-    const dProcess = spawn('yt-dlp', args);
+    console.log(`[Download] spawning yt-dlp via Python for ID: ${videoId}`);
+    const dProcess = spawn('python', args);
+    let dStderr = '';
+    dProcess.stderr.on('data', d => dStderr += d.toString());
+
     activeDownloads.set(videoId, { process: dProcess, cancelled: false });
 
     dProcess.on('close', async (code) => {
@@ -296,10 +303,16 @@ async function downloadVideoAndMeta(videoId, videoInfo) {
         if (code === 0 && (!state || !state.cancelled)) {
             if (await fs.pathExists(finalMp4)) {
                 await fs.writeJson(metaPath, videoInfo, { spaces: 4 });
-                console.log(`Download success: ${videoId}`);
+                console.log(`[Download] SUCCESS: ${videoId}`);
+            } else {
+                console.error(`[Download] FAILED: ${videoId} - File not found at ${finalMp4}`);
             }
-        } else if (state?.cancelled) {
-            console.log(`Download dihentikan: ${videoId}`);
+        } else {
+            if (state?.cancelled) {
+                console.log(`[Download] CANCELLED: ${videoId}`);
+            } else {
+                console.error(`[Download] ERROR: ${videoId} exited with code ${code}. Stderr: ${dStderr}`);
+            }
             for (const ext of ['.mp4', '.m4a', '.webm', '.part', '.ytdl']) {
                 const fPart = baseName + ext;
                 if (await fs.pathExists(fPart)) await fs.remove(fPart).catch(() => { });
@@ -318,21 +331,35 @@ app.post('/extract', async (req, res) => {
         query = `ytsearch${offset + limit - 1}:${query}`;
     }
 
+    console.log(`[Extract] Query: ${query}, Offset: ${offset}`);
+
     const args = [
-        '--quiet', '--no-warnings', '--extract-flat',
-        '--playlist-start', offset.toString(),
-        '--playlist-end', (offset + limit - 1).toString(),
+        '-m', 'yt_dlp',
+        '--quiet', '--no-warnings', '--flat-playlist',
+        '--playlist-items', `${offset}:${parseInt(offset) + limit - 1}`,
         '--ignore-errors', '--dump-single-json',
         query
     ];
 
     try {
         const stdout = await new Promise((resolve, reject) => {
-            const p = spawn('yt-dlp', args);
+            const p = spawn('python', args);
             let so = '';
+            let se = '';
             p.stdout.on('data', d => so += d.toString());
-            p.on('close', code => code === 0 ? resolve(so) : reject(new Error('yt-dlp failed')));
+            p.stderr.on('data', d => se += d.toString());
+            p.on('close', code => {
+                if (code === 0 || (code === 1 && so.trim())) {
+                    resolve(so);
+                } else {
+                    reject(new Error(se || `yt-dlp failed with code ${code}`));
+                }
+            });
         });
+
+        if (!stdout.trim()) {
+            return res.json({ results: [], found_channel_id: null });
+        }
 
         const info = JSON.parse(stdout);
         const results = [];
@@ -376,12 +403,14 @@ app.post('/extract', async (req, res) => {
 
         res.json({ results, found_channel_id: foundChannelId });
     } catch (e) {
+        console.error(`[Extract] Error: ${e.message}`);
         res.status(400).json({ detail: e.message });
     }
 });
 
 app.get('/get_stream', async (req, res) => {
     const { video_id: videoId } = req.query;
+    console.log(`[Stream] Request for ID: ${videoId}`);
     const localFile = path.join(CACHE_DIR, `${videoId}.mp4`);
     const metaPath = path.join(META_DIR, `${videoId}.json`);
 
@@ -391,6 +420,7 @@ app.get('/get_stream', async (req, res) => {
     }
 
     if (await fs.pathExists(localFile)) {
+        console.log(`[Stream] Serving local file for ID: ${videoId}`);
         const h = existingMeta.height || 480;
         const sizeBytes = (await fs.stat(localFile)).size;
         const localFormat = {
@@ -439,12 +469,15 @@ app.get('/get_stream', async (req, res) => {
     let onlineInfo = getCachedInfo(videoId);
     if (!onlineInfo) {
         try {
-            const args = ['--quiet', '--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`];
+            console.log(`[Stream] Fetching online info for: ${videoId}`);
+            const args = ['-m', 'yt_dlp', '--quiet', '--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`];
             const stdout = await new Promise((resolve, reject) => {
-                const p = spawn('yt-dlp', args);
+                const p = spawn('python', args);
                 let so = '';
+                let se = '';
                 p.stdout.on('data', d => so += d.toString());
-                p.on('close', code => code === 0 ? resolve(so) : reject(new Error('yt-dlp failed')));
+                p.stderr.on('data', d => se += d.toString());
+                p.on('close', code => code === 0 ? resolve(so) : reject(new Error(se || 'yt-dlp failed')));
             });
             onlineInfo = JSON.parse(stdout);
             setCachedInfo(videoId, onlineInfo);
@@ -473,8 +506,13 @@ app.get('/get_stream', async (req, res) => {
     }
 
     if (!activeDownloads.has(videoId)) {
+        console.log(`[Download] Scheduling background download for ID: ${videoId}`);
         (async () => {
             try {
+                // Give the browser a small head start (2 seconds) before starting heavy background download
+                await new Promise(r => setTimeout(r, 2000));
+
+                console.log(`[Download] Starting background download for ID: ${videoId}`);
                 const bgSubs = await extractSubtitles(onlineInfo);
                 const videoInfoToSave = {
                     id: videoId,

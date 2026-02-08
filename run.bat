@@ -8,4 +8,4 @@ if not exist node_modules (
 
 :: Run the Node.js server
 echo Starting YT-Studio Server (Node.js)...
-pnpm start
+pnpm dev

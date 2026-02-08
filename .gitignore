@@ -2,3 +2,4 @@ __pycache__
 cached_videos
 server_data
 .venv
+node_modules

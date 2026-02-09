@@ -266,8 +266,9 @@ export const Layout = (props) => {
 
     ${playingVideo && activePage !== 'play' ? html`
     <div class="mini-player-overlay" onclick="location.href='/play?v=${playingVideo.id}&t=' + Math.floor(document.getElementById('bgPlayer')?.currentTime || 0)">
-        <div style="width: 50px; height: 50px; border-radius: 6px; overflow: hidden; background: #000; flex-shrink: 0;">
-            <video id="bgPlayer" src="${playingVideo.stream_url}" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+        <div style="width: 50px; height: 50px; border-radius: 6px; overflow: hidden; background: #000; flex-shrink: 0; position: relative;">
+            <img src="${playingVideo.thumbnail}" style="width: 100%; height: 100%; object-fit: cover;" alt="${playingVideo.title}">
+            <div id="audioVisualizer" style="position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: var(--primary); transform-origin: left; transition: width 0.1s;"></div>
         </div>
         <div class="mini-player-info">
             <h4>${playingVideo.title}</h4>
@@ -279,17 +280,29 @@ export const Layout = (props) => {
         <div class="mini-player-ctrl close" onclick="event.stopPropagation(); const u = new window.URL(location.href); u.searchParams.delete('min'); localStorage.removeItem('videoTime_${playingVideo.id}'); location.href = u.pathname + u.search;">
             <i class="icon icon-x"></i>
         </div>
+        <!-- Audio-only player untuk miniplayer (lebih cepat) -->
+        <audio id="bgPlayer" src="${playingVideo.stream_url}" autoplay style="display: none;"></audio>
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const player = document.getElementById('bgPlayer');
+            const visualizer = document.getElementById('audioVisualizer');
+            
             if (player) {
                 const savedTime = localStorage.getItem('videoTime_${playingVideo.id}');
                 if (savedTime) player.currentTime = parseFloat(savedTime);
                 
-                player.ontimeupdate = () => { localStorage.setItem('videoTime_${playingVideo.id}', player.currentTime); };
+                player.ontimeupdate = () => { 
+                    localStorage.setItem('videoTime_${playingVideo.id}', player.currentTime);
+                    
+                    // Update visualizer
+                    if (visualizer && player.duration) {
+                        const progress = (player.currentTime / player.duration) * 100;
+                        visualizer.style.width = progress + '%';
+                    }
+                };
                 
-                const playVideo = () => {
+                const playAudio = () => {
                     player.play().then(() => {
                         updateMediaMetadata({
                             title: '${safeStr(playingVideo.title)}',
@@ -302,7 +315,7 @@ export const Layout = (props) => {
                     });
                 };
 
-                playVideo();
+                playAudio();
             }
         });
     </script>` : ''}

@@ -39,10 +39,7 @@ app.use('*', async (c, next) => {
 
         if (await fs.pathExists(metaPath)) {
             videoMeta = await fs.readJson(metaPath);
-            videoMeta.stream_url = `/offline/${minId}.webm`; // Prioritas webm
-            if (!await fs.pathExists(path.join(CACHE_DIR, `${minId}.webm`))) {
-                videoMeta.stream_url = `/offline/${minId}.mp4`;
-            }
+            videoMeta.stream_url = `/offline/${minId}.mp4`;
         } else {
             const history = await fs.readJson(HISTORY_FILE).catch(() => []);
             videoMeta = history.find(h => h.id === minId);
@@ -90,7 +87,7 @@ const searchVideos = async (query, subs = [], page = 1) => {
         const results = await Promise.all(entries.map(async (entry) => {
             if (!entry || !entry.id) return null; // Validasi entry dan id
 
-            const isOffline = await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.webm`)) || await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.mp4`));
+            const isOffline = await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.mp4`));
             const channelId = entry.channel_id || entry.uploader_id || 'unknown';
 
             let thumbnail = entry.thumbnail || entry.thumbnails?.[0]?.url || '';
@@ -155,14 +152,12 @@ app.get('/play', async (c) => {
     const metaPath = path.join(META_DIR, `${videoId}.json`);
     let videoData = {};
 
-    // Cek versi webm dulu karena user ingin ukuran lebih kecil
-    const webmPath = path.join(CACHE_DIR, `${videoId}.webm`);
     const mp4Path = path.join(CACHE_DIR, `${videoId}.mp4`);
 
-    if (await fs.pathExists(webmPath) || await fs.pathExists(mp4Path)) {
+    if (await fs.pathExists(mp4Path)) {
         if (await fs.pathExists(metaPath)) {
             videoData = await fs.readJson(metaPath);
-            videoData.stream_url = (await fs.pathExists(webmPath)) ? `/offline/${videoId}.webm` : `/offline/${videoId}.mp4`;
+            videoData.stream_url = `/offline/${videoId}.mp4`;
             videoData.is_offline = true;
         }
     }
@@ -173,8 +168,11 @@ app.get('/play', async (c) => {
             const info = JSON.parse(stdout);
             if (!info) throw new Error("Gagal mengambil informasi video.");
 
-            // Prioritaskan format gabungan untuk streaming awal
-            const bestFormat = info.formats.find(f => f.vcodec !== 'none' && f.acodec !== 'none' && f.height <= 480) || info.formats.find(f => f.vcodec !== 'none' && f.acodec !== 'none');
+            // Prioritaskan format MP4 yang kompatibel dengan iOS (H.264 + AAC)
+            const bestFormat = info.formats.find(f => f.vcodec !== 'none' && f.acodec !== 'none' && f.height <= 480 && f.ext === 'mp4') ||
+                info.formats.find(f => f.vcodec !== 'none' && f.acodec !== 'none' && f.ext === 'mp4') ||
+                info.formats.find(f => f.vcodec !== 'none' && f.acodec !== 'none' && f.height <= 480) ||
+                info.formats.find(f => f.vcodec !== 'none' && f.acodec !== 'none');
 
             videoData = {
                 id: videoId,
@@ -248,31 +246,36 @@ app.get('/play', async (c) => {
     }));
 });
 
-// Fungsi Download: Memaksa WebM dan download Thumbnail lokal
+// Fungsi Download: MP4 (H.264+AAC) untuk iOS compatibility dengan progress detail
 async function startBackgroundDownload(videoId) {
     if (downloadProgress.has(videoId)) return;
 
-    const webmPath = path.join(CACHE_DIR, `${videoId}.webm`);
     const mp4Path = path.join(CACHE_DIR, `${videoId}.mp4`);
+    const audioPath = path.join(CACHE_DIR, `${videoId}_audio.m4a`);
+    const videoPath = path.join(CACHE_DIR, `${videoId}_video.mp4`);
 
-    if (await fs.pathExists(webmPath) || await fs.pathExists(mp4Path)) {
+    if (await fs.pathExists(mp4Path)) {
         downloadProgress.set(videoId, 100);
         return;
     }
 
-    downloadProgress.set(videoId, 0.1);
+    downloadProgress.set(videoId, 0);
 
     try {
         const metaPath = path.join(META_DIR, `${videoId}.json`);
-        let info = null;
 
-        // Selalu ambil metadata baru jika sedang mendownload untuk memastikan thumbnail terdownload
+        // TAHAP 1: Extract URL (0-20%)
+        console.log(`\n[DOWNLOAD] Tahap 1/4: Mengekstrak URL untuk ${videoId}...`);
+        downloadProgress.set(videoId, 5);
+
         const stdout = await runYtDlp(['--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`]);
-        info = JSON.parse(stdout);
+        const info = JSON.parse(stdout);
+        downloadProgress.set(videoId, 20);
+        console.log(`[DOWNLOAD] ✓ URL berhasil diekstrak`);
 
         // Download Thumbnail Lokal
         const thumbUrl = info.thumbnail;
-        const thumbExt = '.webp'; // Kebanyakan thumbnail YT sekarang webp
+        const thumbExt = '.webp';
         const thumbLocalPath = path.join(THUMB_DIR, `${videoId}${thumbExt}`);
 
         try {
@@ -289,27 +292,64 @@ async function startBackgroundDownload(videoId) {
             title: info.title,
             uploader: info.uploader || info.channel,
             channel_id: info.channel_id,
-            thumbnail: `/thumb/${videoId}${thumbExt}`, // Path lokal ke API
+            thumbnail: `/thumb/${videoId}${thumbExt}`,
             duration: info.duration,
             views: info.view_count
         };
         await fs.writeJson(metaPath, meta, { spaces: 4 });
 
-        // DOWNLOAD: Gunakan format WebM (VP9 + Opus) agar UKURAN JAUH LEBIH KECIL
+        // TAHAP 2: Download Audio (21-55%)
+        console.log(`[DOWNLOAD] Tahap 2/4: Mendownload audio...`);
         await runYtDlp([
             '--no-warnings',
-            '-f', 'bestvideo[height<=480][ext=webm]+bestaudio[ext=webm]/best[height<=480][ext=webm]/best[ext=webm]/best',
-            '--merge-output-format', 'webm',
-            '-o', webmPath,
+            '-f', 'bestaudio[ext=m4a]/bestaudio',
+            '--extract-audio',
+            '--audio-format', 'm4a',
+            '-o', audioPath,
             `https://www.youtube.com/watch?v=${videoId}`
         ], (progress) => {
-            downloadProgress.set(videoId, progress);
+            // Map progress 0-100 ke range 21-55
+            const mappedProgress = 21 + (progress * 0.34);
+            downloadProgress.set(videoId, mappedProgress);
         });
+        console.log(`[DOWNLOAD] ✓ Audio selesai didownload`);
 
+        // TAHAP 3: Download Video (56-90%)
+        console.log(`[DOWNLOAD] Tahap 3/4: Mendownload video...`);
+        await runYtDlp([
+            '--no-warnings',
+            '-f', 'bestvideo[height<=480][ext=mp4]/bestvideo[ext=mp4]/bestvideo',
+            '-o', videoPath,
+            `https://www.youtube.com/watch?v=${videoId}`
+        ], (progress) => {
+            // Map progress 0-100 ke range 56-90
+            const mappedProgress = 56 + (progress * 0.34);
+            downloadProgress.set(videoId, mappedProgress);
+        });
+        console.log(`[DOWNLOAD] ✓ Video selesai didownload`);
+
+        // TAHAP 4: Merge menggunakan FFmpeg (91-100%)
+        console.log(`[DOWNLOAD] Tahap 4/4: Menggabungkan audio dan video menggunakan FFmpeg...`);
+        downloadProgress.set(videoId, 91);
+
+        const { execSync } = await import('child_process');
+        try {
+            execSync(`ffmpeg -y -i "${videoPath}" -i "${audioPath}" -c copy -movflags +faststart "${mp4Path}"`, { stdio: 'ignore' });
+        } catch (mergeErr) {
+            execSync(`ffmpeg -y -i "${videoPath}" -i "${audioPath}" -c:v libx264 -c:a aac -preset superfast -movflags +faststart "${mp4Path}"`, { stdio: 'ignore' });
+        }
+
+        downloadProgress.set(videoId, 98);
+        await fs.remove(audioPath).catch(() => { });
+        await fs.remove(videoPath).catch(() => { });
         downloadProgress.set(videoId, 100);
+        console.log(`[DOWNLOAD] ✓✓✓ Download selesai: ${videoId}\n`);
     } catch (e) {
-        console.error(`Download Gagal untuk ${videoId}:`, e);
+        console.error(`[DOWNLOAD] ✗ Gagal untuk ${videoId}:`, e.message);
         downloadProgress.delete(videoId);
+        await fs.remove(audioPath).catch(() => { });
+        await fs.remove(videoPath).catch(() => { });
+        await fs.remove(mp4Path).catch(() => { });
     }
 }
 
@@ -389,7 +429,7 @@ app.get('/offline', async (c) => {
     const results = [];
     const ids = new Set();
     for (const file of files) {
-        if (file.endsWith('.mp4') || file.endsWith('.webm')) {
+        if (file.endsWith('.mp4') && !file.includes('_audio') && !file.includes('_video')) {
             const id = file.split('.')[0];
             if (ids.has(id)) continue;
             ids.add(id);
@@ -408,7 +448,6 @@ app.delete('/delete_offline/:id', async (c) => {
     const id = c.req.param('id');
     try {
         await fs.remove(path.join(CACHE_DIR, `${id}.mp4`));
-        await fs.remove(path.join(CACHE_DIR, `${id}.webm`));
         await fs.remove(path.join(THUMB_DIR, `${id}.webp`));
         await fs.remove(path.join(META_DIR, `${id}.json`));
         return c.json({ status: 'ok' });
@@ -443,10 +482,22 @@ serve({ fetch: app.fetch, port: PORT });
 
 function getLocalIp() {
     const interfaces = os.networkInterfaces();
+    let bestIp = '127.0.0.1';
+
     for (const name of Object.keys(interfaces)) {
         for (const iface of interfaces[name]) {
-            if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+            // Lewati IPv6 dan internal
+            if (iface.family !== 'IPv4' || iface.internal) continue;
+
+            // Lewati alamat APIPA (169.254.x.x) - biasanya dari virtual interface atau kabel terputus
+            if (iface.address.startsWith('169.254.')) continue;
+
+            // Simpan sebagai kandidat
+            bestIp = iface.address;
+
+            // Jika menemukan 192.168.x.x, ini biasanya IP yang benar (prioritas utama)
+            if (iface.address.startsWith('192.168.')) return iface.address;
         }
     }
-    return '127.0.0.1';
+    return bestIp;
 }

@@ -98,8 +98,17 @@ export const Play = (props) => {
                         
                         if (data.status === 'downloading' || data.status === 'finished') {
                             text.style.display = 'inline';
-                            text.innerText = Math.round(data.progress) + '%';
-                            progressBg.style.width = data.progress + '%';
+                            
+                            // Tampilkan tahapan download
+                            let stage = '';
+                            const progress = data.progress;
+                            if (progress < 20) stage = 'Extract';
+                            else if (progress < 55) stage = 'Audio';
+                            else if (progress < 90) stage = 'Video';
+                            else stage = 'Merge';
+                            
+                            text.innerText = Math.round(progress) + '% ' + stage;
+                            progressBg.style.width = progress + '%';
                             
                             if (data.status === 'finished') {
                                 text.style.display = 'none';

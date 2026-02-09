@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "build": "cross-env NODE_PATH=./node_modules esbuild server.js --bundle --platform=node --target=node20 --outfile=bundle.mjs --format=esm --minify --external:node:* --banner:js=\"import { createRequire } from \\\"module\\\"; const require = createRequire(import.meta.url); const __filename = new URL(import.meta.url).pathname; const __dirname = new URL(\\\".\\\", import.meta.url).pathname;\""
   },
   "dependencies": {
     "@hono/node-server": "^1.19.9",

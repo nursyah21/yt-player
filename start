@@ -6,6 +6,10 @@ if [ ! -d "node_modules" ]; then
     pnpm install
 fi
 
+if [ ! -f "bundle.mjs" ]; then
+    echo "Bundling..."
+    pnpm build
+fi
+
 # Run the Node.js server
-echo "Starting YT-Studio Server (Node.js)..."
-pnpm start
+node bundle.mjs

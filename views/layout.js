@@ -3,6 +3,12 @@ import { html } from 'hono/html';
 export const Layout = (props) => {
     const { title, activePage, playingVideo, query, children, subscriptions } = props;
 
+    // Helper safely escape string for JS execution context
+    const safeStr = (str) => {
+        if (!str) return '';
+        return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
+    }
+
     return html`<!DOCTYPE html>
 <html lang="id">
 <head>

@@ -16,9 +16,14 @@ import { PlaylistDetail } from './views/playlist_detail.js';
 const app = new Hono();
 const PORT = Number(process.env.PORT) || 8000;
 
+// Cache untuk mencegah request duplikat
+const searchCache = new Map();
+const CACHE_DURATION = 30000; // 30 detik
+
 // Static Files
 app.use('/static/*', serveStatic({ root: './' }));
 app.use('/offline/*', serveStatic({ root: './cached_videos', rewriteRequestPath: (path) => path.replace(/^\/offline/, '') }));
+app.use('/thumb/*', serveStatic({ root: './cached_videos/thumbnails', rewriteRequestPath: (path) => path.replace(/^\/thumb/, '') }));
 
 // Middleware: Persistent Player State and Subscriptions
 app.use('*', async (c, next) => {
@@ -51,6 +56,15 @@ app.use('*', async (c, next) => {
 // Home Route
 const searchVideos = async (query, subs = [], page = 1) => {
     if (!query) return [];
+
+    // Cek cache terlebih dahulu
+    const cacheKey = `${query}_${page}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+        console.log(`[CACHE] Using cached results for: ${query} (page ${page})`);
+        return cached.data;
+    }
+
     try {
         const pageSize = 20;
         const start = (page - 1) * pageSize + 1;
@@ -77,10 +91,20 @@ const searchVideos = async (query, subs = [], page = 1) => {
             if (!entry) return null;
             const isOffline = await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.webm`)) || await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.mp4`));
             const channelId = entry.channel_id || entry.uploader_id;
+
+            let thumbnail = entry.thumbnail || entry.thumbnails?.[0]?.url;
+            if (isOffline) {
+                const metaPath = path.join(META_DIR, `${entry.id}.json`);
+                if (await fs.pathExists(metaPath)) {
+                    const meta = await fs.readJson(metaPath);
+                    thumbnail = meta.thumbnail;
+                }
+            }
+
             return {
                 id: entry.id,
                 title: entry.title,
-                thumbnail: entry.thumbnail || entry.thumbnails?.[0]?.url,
+                thumbnail: thumbnail,
                 uploader: entry.uploader || entry.channel,
                 channel_id: channelId,
                 duration: entry.duration,
@@ -89,7 +113,23 @@ const searchVideos = async (query, subs = [], page = 1) => {
                 is_subscribed: subs.some(s => s.channel_id === channelId)
             };
         }));
-        return results.filter(r => r);
+
+        const filteredResults = results.filter(r => r);
+
+        // Simpan ke cache
+        searchCache.set(cacheKey, {
+            data: filteredResults,
+            timestamp: Date.now()
+        });
+
+        // Bersihkan cache lama (lebih dari 5 menit)
+        for (const [key, value] of searchCache.entries()) {
+            if (Date.now() - value.timestamp > 300000) {
+                searchCache.delete(key);
+            }
+        }
+
+        return filteredResults;
     } catch (e) {
         console.error(e);
         return [];
@@ -118,15 +158,15 @@ app.get('/play', async (c) => {
     const webmPath = path.join(CACHE_DIR, `${videoId}.webm`);
     const mp4Path = path.join(CACHE_DIR, `${videoId}.mp4`);
 
-    if (await fs.pathExists(webmPath)) {
-        videoData = await fs.readJson(metaPath);
-        videoData.stream_url = `/offline/${videoId}.webm`;
-        videoData.is_offline = true;
-    } else if (await fs.pathExists(mp4Path)) {
-        videoData = await fs.readJson(metaPath);
-        videoData.stream_url = `/offline/${videoId}.mp4`;
-        videoData.is_offline = true;
-    } else {
+    if (await fs.pathExists(webmPath) || await fs.pathExists(mp4Path)) {
+        if (await fs.pathExists(metaPath)) {
+            videoData = await fs.readJson(metaPath);
+            videoData.stream_url = (await fs.pathExists(webmPath)) ? `/offline/${videoId}.webm` : `/offline/${videoId}.mp4`;
+            videoData.is_offline = true;
+        }
+    }
+
+    if (!videoData.id) {
         try {
             const stdout = await runYtDlp(['--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`]);
             const info = JSON.parse(stdout);
@@ -148,11 +188,37 @@ app.get('/play', async (c) => {
                 subtitles: []
             };
 
-            // Auto-save history
+            // Download Thumbnail untuk History
+            const thumbUrl = info.thumbnail;
+            const thumbExt = '.webp';
+            const thumbLocalPath = path.join(THUMB_DIR, `${videoId}${thumbExt}`);
+            let localThumbUrl = thumbUrl; // Default ke URL online
+
+            // Coba download thumbnail ke lokal
+            try {
+                const thumbRes = await fetch(thumbUrl);
+                const thumbBuffer = await thumbRes.arrayBuffer();
+                await fs.writeFile(thumbLocalPath, Buffer.from(thumbBuffer));
+                localThumbUrl = `/thumb/${videoId}${thumbExt}`;
+                console.log(`[THUMB] Downloaded: ${videoId}`);
+            } catch (te) {
+                console.error('[THUMB] Gagal download, menggunakan URL online:', te.message);
+            }
+
+            // Auto-save history dengan thumbnail lokal
             let history = await fs.readJson(HISTORY_FILE).catch(() => []);
-            const histItem = { id: videoId, title: videoData.title, uploader: videoData.uploader, thumbnail: videoData.thumbnail, duration: videoData.duration, views: videoData.views, channel_id: videoData.channel_id };
+            const histItem = {
+                id: videoId,
+                title: videoData.title,
+                uploader: videoData.uploader,
+                thumbnail: localThumbUrl, // Gunakan lokal jika berhasil
+                duration: videoData.duration,
+                views: videoData.views,
+                channel_id: videoData.channel_id
+            };
             history = [histItem, ...history.filter(h => h.id !== videoId)].slice(0, 100);
             await fs.writeJson(HISTORY_FILE, history, { spaces: 4 });
+
 
         } catch (e) {
             console.error(e);
@@ -181,7 +247,7 @@ app.get('/play', async (c) => {
     }));
 });
 
-// Fungsi Download: Memaksa WebM karena user ingin ukuran paling kecil
+// Fungsi Download: Memaksa WebM dan download Thumbnail lokal
 async function startBackgroundDownload(videoId) {
     if (downloadProgress.has(videoId)) return;
 
@@ -197,23 +263,38 @@ async function startBackgroundDownload(videoId) {
 
     try {
         const metaPath = path.join(META_DIR, `${videoId}.json`);
-        if (!await fs.pathExists(metaPath)) {
-            const stdout = await runYtDlp(['--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`]);
-            const info = JSON.parse(stdout);
-            const meta = {
-                id: videoId,
-                title: info.title,
-                uploader: info.uploader || info.channel,
-                channel_id: info.channel_id,
-                thumbnail: info.thumbnail,
-                duration: info.duration,
-                views: info.view_count
-            };
-            await fs.writeJson(metaPath, meta, { spaces: 4 });
+        let info = null;
+
+        // Selalu ambil metadata baru jika sedang mendownload untuk memastikan thumbnail terdownload
+        const stdout = await runYtDlp(['--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`]);
+        info = JSON.parse(stdout);
+
+        // Download Thumbnail Lokal
+        const thumbUrl = info.thumbnail;
+        const thumbExt = '.webp'; // Kebanyakan thumbnail YT sekarang webp
+        const thumbLocalPath = path.join(THUMB_DIR, `${videoId}${thumbExt}`);
+
+        try {
+            const thumbRes = await fetch(thumbUrl);
+            const thumbBuffer = await thumbRes.arrayBuffer();
+            await fs.writeFile(thumbLocalPath, Buffer.from(thumbBuffer));
+            console.log(`[THUMB] Downloaded: ${videoId}`);
+        } catch (te) {
+            console.error('[THUMB] Gagal download thumbnail:', te);
         }
 
+        const meta = {
+            id: videoId,
+            title: info.title,
+            uploader: info.uploader || info.channel,
+            channel_id: info.channel_id,
+            thumbnail: `/thumb/${videoId}${thumbExt}`, // Path lokal ke API
+            duration: info.duration,
+            views: info.view_count
+        };
+        await fs.writeJson(metaPath, meta, { spaces: 4 });
+
         // DOWNLOAD: Gunakan format WebM (VP9 + Opus) agar UKURAN JAUH LEBIH KECIL
-        // Browser mobile modern (Chrome/Firefox) sangat lancar memutar WebM 480p
         await runYtDlp([
             '--no-warnings',
             '-f', 'bestvideo[height<=480][ext=webm]+bestaudio[ext=webm]/best[height<=480][ext=webm]/best[ext=webm]/best',
@@ -327,6 +408,7 @@ app.delete('/delete_offline/:id', async (c) => {
     try {
         await fs.remove(path.join(CACHE_DIR, `${id}.mp4`));
         await fs.remove(path.join(CACHE_DIR, `${id}.webm`));
+        await fs.remove(path.join(THUMB_DIR, `${id}.webp`));
         await fs.remove(path.join(META_DIR, `${id}.json`));
         return c.json({ status: 'ok' });
     } catch (e) { return c.json({ status: 'error' }, 500); }

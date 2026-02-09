@@ -22,26 +22,17 @@ export const Home = (props) => {
                 @media (min-width: 1200px) { .grid-container { grid-template-columns: repeat(3, 1fr); } }
                 @media (min-width: 1600px) { .grid-container { grid-template-columns: repeat(4, 1fr); } }
                 
-                .load-more-btn {
+                .loading-indicator {
                     grid-column: 1 / -1;
-                    padding: 15px;
-                    background: var(--surface);
-                    color: var(--text-dim);
-                    border: 1px solid rgba(255,255,255,0.05);
-                    border-radius: 12px;
-                    cursor: pointer;
+                    padding: 30px;
                     text-align: center;
+                    color: var(--text-dim);
                     font-weight: 600;
-                    margin-top: 20px;
-                    transition: all 0.2s;
-                }
-                .load-more-btn:hover {
-                    background: var(--surface-accent);
-                    color: white;
-                }
-                .load-more-btn.loading {
-                    opacity: 0.5;
-                    pointer-events: none;
+                    font-size: 0.9rem;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 10px;
                 }
             </style>
 
@@ -51,9 +42,9 @@ export const Home = (props) => {
                 ` : ''}
                 
                 ${query && results && results.length > 0 ? html`
-                    <button id="loadMoreBtn" class="load-more-btn" onclick="loadMore('${query}')">
-                        Muat Lebih Banyak
-                    </button>
+                    <div id="loadingSentinel" class="loading-indicator">
+                        <span>...</span>
+                    </div>
                 ` : ''}
             </div>
 
@@ -70,38 +61,65 @@ export const Home = (props) => {
                         <div style="width: 80px; height: 80px; border-radius: 50%; background: #1a1a1e; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
                             <i class="icon icon-play" style="color: var(--primary); font-size: 1.5rem; margin-left: 5px;"></i>
                         </div>
+                        <p style="color: var(--text-dim); font-size: 0.9rem;">Cari sesuatu untuk mulai menonton</p>
                     </div>
-
                 `}
             ` : ''}
 
             <script>
-                let currentPage = 1;
-                async function loadMore(query) {
-                    const btn = document.getElementById('loadMoreBtn');
-                    btn.classList.add('loading');
-                    btn.innerText = 'Memuat...';
-                    
-                    currentPage++;
-                    
-                    try {
-                        const res = await fetch('/api/search?q=' + encodeURIComponent(query) + '&page=' + currentPage);
-                        const html = await res.text();
-                        
-                        if (html.trim()) {
-                            // Insert before the button
-                            btn.insertAdjacentHTML('beforebegin', html);
-                            btn.classList.remove('loading');
-                            btn.innerText = 'Muat Lebih Banyak';
-                        } else {
-                            btn.style.display = 'none';
+                (function() {
+                    let currentPage = 1;
+                    let isLoading = false;
+                    let hasMore = true;
+                    const query = '${query || ''}';
+                    const sentinel = document.getElementById('loadingSentinel');
+                    const grid = document.getElementById('resultsGrid');
+
+                    if (!sentinel || !query) return;
+
+                    const observer = new IntersectionObserver(async (entries) => {
+                        const entry = entries[0];
+                        if (entry.isIntersecting && !isLoading && hasMore) {
+                            await loadMore();
                         }
-                    } catch (e) {
-                        console.error(e);
-                        btn.classList.remove('loading');
-                        btn.innerText = 'Gagal memuat. Coba lagi.';
+                    }, {
+                        rootMargin: '200px' // Pre-load when sentinel is 200px from viewport
+                    });
+
+                    observer.observe(sentinel);
+
+                    async function loadMore() {
+                        isLoading = true;
+                        currentPage++;
+                        console.log('[CLIENT] Loading page ' + currentPage);
+                        
+                        try {
+                            const res = await fetch('/api/search?q=' + encodeURIComponent(query) + '&page=' + currentPage);
+                            const html = await res.text();
+                            
+                            if (html.trim()) {
+                                // Create a temp div to parse HTML
+                                const temp = document.createElement('div');
+                                temp.innerHTML = html;
+                                
+                                // Append each new video card before the sentinel
+                                while (temp.firstChild) {
+                                    grid.insertBefore(temp.firstChild, sentinel);
+                                }
+                                isLoading = false;
+                            } else {
+                                hasMore = false;
+                                sentinel.style.display = 'none';
+                                observer.disconnect();
+                            }
+                        } catch (e) {
+                            console.error(e);
+                            isLoading = false;
+                            sentinel.innerHTML = '<span>Gagal memuat. Mencoba lagi...</span>';
+                            setTimeout(loadMore, 3000);
+                        }
                     }
-                }
+                })();
             </script>
         `
     });

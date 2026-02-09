@@ -27,18 +27,52 @@ export const SUBSCRIPTIONS_FILE = path.join(DATA_DIR, 'subscriptions.json');
     await fs.ensureDir(DATA_DIR);
 })();
 
-// --- YT-DLP QUEUE ---
+// --- YT-DLP QUEUE & DOWNLOAD TRACKING ---
 const MAX_CONCURRENT_YT_DLP = 2;
 let activeProcesses = 0;
 const ytQueue = [];
+export const downloadProgress = new Map(); // Store download progress by ID
 
-export const runYtDlp = (args) => new Promise((resolve, reject) => {
+export const runYtDlp = (args, onProgress = null) => new Promise((resolve, reject) => {
     const execute = () => {
         activeProcesses++;
+
+        // Cek apakah ini perintah dump atau bukan untuk log terminal
+        const isDump = args.includes('--dump-json') || args.includes('--dump-single-json');
+        if (!isDump) {
+            console.log(`\n[YT-DLP] Executing: yt-dlp ${args.filter(a => !a.startsWith('http')).join(' ')}`);
+        } else {
+            console.log(`[YT-DLP] Fetching Metadata...`);
+        }
+
         const p = spawn('yt-dlp', [...args]);
         let so = '', se = '';
-        p.stdout.on('data', d => so += d.toString());
-        p.stderr.on('data', d => se += d.toString());
+
+        p.stdout.on('data', d => {
+            const str = d.toString();
+            so += str;
+
+            // Filter: Jangan tampilkan JSON dump ke terminal
+            if (!str.trim().startsWith('{')) {
+                process.stdout.write(str);
+            }
+
+            if (onProgress) {
+                const match = str.match(/\[download\]\s+(\d+\.?\d+)%/);
+                if (match) {
+                    onProgress(parseFloat(match[1]));
+                }
+            }
+        });
+
+        p.stderr.on('data', d => {
+            const str = d.toString();
+            se += str;
+            if (!str.includes('hls') && !str.includes('http')) { // Filter noise stderr
+                process.stderr.write(str);
+            }
+        });
+
         p.on('close', (code) => {
             activeProcesses--;
             if (ytQueue.length > 0) {

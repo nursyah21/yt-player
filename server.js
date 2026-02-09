@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
-import { runYtDlp, CACHE_DIR, META_DIR, SUB_DIR, THUMB_DIR, HISTORY_FILE, PLAYLISTS_FILE, SUBSCRIPTIONS_FILE } from './utils.js';
+import { runYtDlp, CACHE_DIR, META_DIR, SUB_DIR, THUMB_DIR, HISTORY_FILE, PLAYLISTS_FILE, SUBSCRIPTIONS_FILE, downloadProgress } from './utils.js';
 import { Home } from './views/home.js';
 import { Play } from './views/play.js';
 import { History } from './views/history.js';
@@ -34,17 +34,20 @@ app.use('*', async (c, next) => {
 
         if (await fs.pathExists(metaPath)) {
             videoMeta = await fs.readJson(metaPath);
-            videoMeta.stream_url = `/offline/${minId}.mp4`;
+            videoMeta.stream_url = `/offline/${minId}.webm`; // Prioritas webm
+            if (!await fs.pathExists(path.join(CACHE_DIR, `${minId}.webm`))) {
+                videoMeta.stream_url = `/offline/${minId}.mp4`;
+            }
         } else {
             const history = await fs.readJson(HISTORY_FILE).catch(() => []);
             videoMeta = history.find(h => h.id === minId);
         }
         c.set('playingVideo', videoMeta);
+        console.log(`[STATE] Active Mini-Player: ${videoMeta?.title || minId}`);
     }
     await next();
 });
 
-// Home Route
 // Home Route
 const searchVideos = async (query, subs = [], page = 1) => {
     if (!query) return [];
@@ -53,11 +56,10 @@ const searchVideos = async (query, subs = [], page = 1) => {
         const start = (page - 1) * pageSize + 1;
         const end = start + pageSize - 1;
 
-        // Use a larger range for ytsearch to ensure we get results, as ytsearchN is strict
         const searchStr = query.startsWith('http') ? query : `ytsearch${end + 20}:${query}`;
 
         const stdout = await runYtDlp([
-            '--quiet', '--no-warnings', '--flat-playlist', '--dump-single-json',
+            '--no-warnings', '--flat-playlist', '--dump-single-json',
             '--playlist-start', start.toString(),
             '--playlist-end', end.toString(),
             searchStr
@@ -73,7 +75,7 @@ const searchVideos = async (query, subs = [], page = 1) => {
 
         const results = await Promise.all(entries.map(async (entry) => {
             if (!entry) return null;
-            const isReady = await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.mp4`));
+            const isOffline = await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.webm`)) || await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.mp4`));
             const channelId = entry.channel_id || entry.uploader_id;
             return {
                 id: entry.id,
@@ -83,7 +85,7 @@ const searchVideos = async (query, subs = [], page = 1) => {
                 channel_id: channelId,
                 duration: entry.duration,
                 views: entry.view_count || 0,
-                is_offline: isReady,
+                is_offline: isOffline,
                 is_subscribed: subs.some(s => s.channel_id === channelId)
             };
         }));
@@ -98,6 +100,7 @@ app.get('/', async (c) => {
     const query = c.req.query('q');
     const playingVideo = c.get('playingVideo');
     const subscriptions = c.get('subscriptions');
+    console.log(`[GET] Home Page${query ? ` - Search: ${query}` : ''}`);
     const results = await searchVideos(query, subscriptions, 1);
     return c.html(Home({ results, query, activePage: 'home', playingVideo, subscriptions }));
 });
@@ -105,20 +108,31 @@ app.get('/', async (c) => {
 // Play Route
 app.get('/play', async (c) => {
     const videoId = c.req.query('v');
+    console.log(`[GET] Play Video: ${videoId}`);
     if (!videoId) return c.redirect('/');
 
     const metaPath = path.join(META_DIR, `${videoId}.json`);
     let videoData = {};
 
-    if (await fs.pathExists(metaPath)) {
+    // Cek versi webm dulu karena user ingin ukuran lebih kecil
+    const webmPath = path.join(CACHE_DIR, `${videoId}.webm`);
+    const mp4Path = path.join(CACHE_DIR, `${videoId}.mp4`);
+
+    if (await fs.pathExists(webmPath)) {
+        videoData = await fs.readJson(metaPath);
+        videoData.stream_url = `/offline/${videoId}.webm`;
+        videoData.is_offline = true;
+    } else if (await fs.pathExists(mp4Path)) {
         videoData = await fs.readJson(metaPath);
         videoData.stream_url = `/offline/${videoId}.mp4`;
         videoData.is_offline = true;
     } else {
         try {
-            const stdout = await runYtDlp(['--quiet', '--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`]);
+            const stdout = await runYtDlp(['--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`]);
             const info = JSON.parse(stdout);
             if (!info) throw new Error("Gagal mengambil informasi video.");
+
+            // Prioritaskan format gabungan untuk streaming awal
             const bestFormat = info.formats.find(f => f.vcodec !== 'none' && f.acodec !== 'none' && f.height <= 480) || info.formats.find(f => f.vcodec !== 'none' && f.acodec !== 'none');
 
             videoData = {
@@ -146,13 +160,18 @@ app.get('/play', async (c) => {
         }
     }
 
-    // Get Related Videos (from history for now as in old server)
+    // Get Related Videos
     const history = await fs.readJson(HISTORY_FILE).catch(() => []);
     const relatedVideos = history.filter(v => v.id !== videoId).slice(0, 10);
 
     // Get Subscription Status
     const subs = c.get('subscriptions');
     const isSubscribed = subs.some(s => s.channel_id === videoData.channel_id);
+
+    // Otomatis download jika diminta dalam query
+    if (c.req.query('download') === '1') {
+        startBackgroundDownload(videoId);
+    }
 
     return c.html(Play({
         ...videoData,
@@ -162,7 +181,57 @@ app.get('/play', async (c) => {
     }));
 });
 
-// API: Suggestions
+// Fungsi Download: Memaksa WebM karena user ingin ukuran paling kecil
+async function startBackgroundDownload(videoId) {
+    if (downloadProgress.has(videoId)) return;
+
+    const webmPath = path.join(CACHE_DIR, `${videoId}.webm`);
+    const mp4Path = path.join(CACHE_DIR, `${videoId}.mp4`);
+
+    if (await fs.pathExists(webmPath) || await fs.pathExists(mp4Path)) {
+        downloadProgress.set(videoId, 100);
+        return;
+    }
+
+    downloadProgress.set(videoId, 0.1);
+
+    try {
+        const metaPath = path.join(META_DIR, `${videoId}.json`);
+        if (!await fs.pathExists(metaPath)) {
+            const stdout = await runYtDlp(['--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`]);
+            const info = JSON.parse(stdout);
+            const meta = {
+                id: videoId,
+                title: info.title,
+                uploader: info.uploader || info.channel,
+                channel_id: info.channel_id,
+                thumbnail: info.thumbnail,
+                duration: info.duration,
+                views: info.view_count
+            };
+            await fs.writeJson(metaPath, meta, { spaces: 4 });
+        }
+
+        // DOWNLOAD: Gunakan format WebM (VP9 + Opus) agar UKURAN JAUH LEBIH KECIL
+        // Browser mobile modern (Chrome/Firefox) sangat lancar memutar WebM 480p
+        await runYtDlp([
+            '--no-warnings',
+            '-f', 'bestvideo[height<=480][ext=webm]+bestaudio[ext=webm]/best[height<=480][ext=webm]/best[ext=webm]/best',
+            '--merge-output-format', 'webm',
+            '-o', webmPath,
+            `https://www.youtube.com/watch?v=${videoId}`
+        ], (progress) => {
+            downloadProgress.set(videoId, progress);
+        });
+
+        downloadProgress.set(videoId, 100);
+    } catch (e) {
+        console.error(`Download Gagal untuk ${videoId}:`, e);
+        downloadProgress.delete(videoId);
+    }
+}
+
+// API Routes
 app.get('/api/suggestions', async (c) => {
     const q = c.req.query('q');
     if (!q) return c.json([]);
@@ -170,25 +239,31 @@ app.get('/api/suggestions', async (c) => {
         const res = await fetch(`https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(q)}`);
         const data = await res.json();
         return c.json(data[1] || []);
-    } catch (e) {
-        return c.json([]);
-    }
+    } catch (e) { return c.json([]); }
 });
 
 app.get('/api/search', async (c) => {
     const q = c.req.query('q');
     const page = Number(c.req.query('page')) || 1;
-    const subscriptions = c.get('subscriptions');
+    const stats = c.get('subscriptions');
     if (!q) return c.text('');
-
-    const results = await searchVideos(q, subscriptions, page);
-    if (!results || results.length === 0) return c.text('');
-
-    const htmlStr = results.map(video => VideoCard(video)).join('');
-    return c.html(htmlStr);
+    const results = await searchVideos(q, stats, page);
+    return c.html(results.map(v => VideoCard(v)).join(''));
 });
 
-// API: Toggle Subscription
+app.get('/api/download_status/:id', (c) => {
+    const id = c.req.param('id');
+    const progress = downloadProgress.get(id);
+    if (progress === undefined) return c.json({ status: 'not_found' });
+    return c.json({ status: progress >= 100 ? 'finished' : 'downloading', progress });
+});
+
+app.post('/api/download/:id', async (c) => {
+    const id = c.req.param('id');
+    startBackgroundDownload(id);
+    return c.json({ status: 'started' });
+});
+
 app.post('/toggle_subscription', async (c) => {
     const { channel_id, uploader } = await c.req.json();
     let subs = await fs.readJson(SUBSCRIPTIONS_FILE).catch(() => []);
@@ -199,7 +274,6 @@ app.post('/toggle_subscription', async (c) => {
     return c.json({ status: "ok" });
 });
 
-// API: Playlists
 app.get('/api/playlists', async (c) => {
     const playlists = await fs.readJson(PLAYLISTS_FILE).catch(() => ({}));
     return c.json(playlists);
@@ -217,13 +291,10 @@ app.post('/add_to_playlist', async (c) => {
     return c.json({ status: "ok" });
 });
 
-// Placeholder for other pages
-// History
+// Pages
 app.get('/history', async (c) => {
     const history = await fs.readJson(HISTORY_FILE).catch(() => []);
-    const playingVideo = c.get('playingVideo');
-    const subscriptions = c.get('subscriptions');
-    return c.html(History({ results: history, playingVideo, subscriptions }));
+    return c.html(History({ results: history, playingVideo: c.get('playingVideo'), subscriptions: c.get('subscriptions') }));
 });
 
 app.post('/clear_history', async (c) => {
@@ -231,59 +302,43 @@ app.post('/clear_history', async (c) => {
     return c.redirect('/history');
 });
 
-// Offline
 app.get('/offline', async (c) => {
     const files = await fs.readdir(CACHE_DIR).catch(() => []);
-    const mp4Files = files.filter(f => f.endsWith('.mp4'));
     const results = [];
-
-    for (const file of mp4Files) {
-        const id = file.replace('.mp4', '');
-        const metaPath = path.join(META_DIR, `${id}.json`);
-        if (await fs.pathExists(metaPath)) {
-            const meta = await fs.readJson(metaPath);
-            meta.is_offline = true;
-            results.push(meta);
+    const ids = new Set();
+    for (const file of files) {
+        if (file.endsWith('.mp4') || file.endsWith('.webm')) {
+            const id = file.split('.')[0];
+            if (ids.has(id)) continue;
+            ids.add(id);
+            const metaPath = path.join(META_DIR, `${id}.json`);
+            if (await fs.pathExists(metaPath)) {
+                const meta = await fs.readJson(metaPath);
+                meta.is_offline = true;
+                results.push(meta);
+            }
         }
     }
-
-    const playingVideo = c.get('playingVideo');
-    const subscriptions = c.get('subscriptions');
-    return c.html(Offline({ results, playingVideo, subscriptions }));
+    return c.html(Offline({ results, playingVideo: c.get('playingVideo'), subscriptions: c.get('subscriptions') }));
 });
 
 app.delete('/delete_offline/:id', async (c) => {
     const id = c.req.param('id');
     try {
         await fs.remove(path.join(CACHE_DIR, `${id}.mp4`));
+        await fs.remove(path.join(CACHE_DIR, `${id}.webm`));
         await fs.remove(path.join(META_DIR, `${id}.json`));
-
-        const thumbs = await fs.readdir(THUMB_DIR).catch(() => []);
-        const thumb = thumbs.find(t => t.startsWith(id + '.'));
-        if (thumb) await fs.remove(path.join(THUMB_DIR, thumb));
-
-        const subs = await fs.readdir(SUB_DIR).catch(() => []);
-        const relatedSubs = subs.filter(s => s.startsWith(id + '.'));
-        for (const sub of relatedSubs) await fs.remove(path.join(SUB_DIR, sub));
-
         return c.json({ status: 'ok' });
-    } catch (e) {
-        return c.json({ status: 'error', message: e.message }, 500);
-    }
+    } catch (e) { return c.json({ status: 'error' }, 500); }
 });
 
-// Playlists
 app.get('/playlists', async (c) => {
     const playlists = await fs.readJson(PLAYLISTS_FILE).catch(() => ({}));
-    const playingVideo = c.get('playingVideo');
-    const subscriptions = c.get('subscriptions');
-    return c.html(Playlists({ results: playlists, playingVideo, subscriptions }));
+    return c.html(Playlists({ results: playlists, playingVideo: c.get('playingVideo'), subscriptions: c.get('subscriptions') }));
 });
 
 app.post('/create_playlist', async (c) => {
     const { name } = await c.req.json();
-    if (!name) return c.json({ status: 'error' }, 400);
-
     const playlists = await fs.readJson(PLAYLISTS_FILE).catch(() => ({}));
     if (!playlists[name]) {
         playlists[name] = [];
@@ -295,41 +350,20 @@ app.post('/create_playlist', async (c) => {
 app.get('/playlists/:name', async (c) => {
     const name = c.req.param('name');
     const playlists = await fs.readJson(PLAYLISTS_FILE).catch(() => ({}));
-    const results = playlists[name] || [];
-    const playingVideo = c.get('playingVideo');
-    const subscriptions = c.get('subscriptions');
-    return c.html(PlaylistDetail({ title: name, results, playingVideo, subscriptions }));
+    return c.html(PlaylistDetail({ title: name, results: playlists[name] || [], playingVideo: c.get('playingVideo'), subscriptions: c.get('subscriptions') }));
 });
 
 const localIp = getLocalIp();
+console.log(`run on http://localhost:${PORT} | http://${localIp}:${PORT}`);
 
-console.log(`\n🚀 Server is ready!`);
-console.log(`- Local:   http://localhost:${PORT}`);
-console.log(`- Network: http://${localIp}:${PORT}\n`);
-
-serve({
-    fetch: app.fetch,
-    port: PORT
-});
+serve({ fetch: app.fetch, port: PORT });
 
 function getLocalIp() {
     const interfaces = os.networkInterfaces();
-    let backupIp = null;
-
     for (const name of Object.keys(interfaces)) {
         for (const iface of interfaces[name]) {
-            if (iface.family === 'IPv4' && !iface.internal) {
-                // Prioritaskan alamat 192.168.x.x (WiFi/LAN Lokal)
-                if (iface.address.startsWith('192.168.')) {
-                    return iface.address;
-                }
-                // Simpan IP lain sebagai cadangan (misal WSL 172.x atau lainnya)
-                // Tapi skip alamat APIPA 169.254
-                if (!iface.address.startsWith('169.254.')) {
-                    backupIp = iface.address;
-                }
-            }
+            if (iface.family === 'IPv4' && !iface.internal) return iface.address;
         }
     }
-    return backupIp || '127.0.0.1';
+    return '127.0.0.1';
 }

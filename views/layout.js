@@ -329,7 +329,7 @@ export const Layout = (props) => {
                 try {
                     navigator.mediaSession.setActionHandler(action, handler);
                 } catch (error) {
-                    console.log(`The media session action "${action}" is not supported yet.`);
+                    console.log(\`The media session action "${action}" is not supported yet.\`);
                 }
             }
         };

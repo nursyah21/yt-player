@@ -28,7 +28,7 @@ export const Playlists = (props) => {
             }">
                 <h2 style="font-size: 1.5rem; margin-bottom: 20px;">Koleksi Anda</h2>
                 <div style="background: var(--surface); padding: 5px 5px 5px 15px; border-radius: 30px; display: flex; gap: 10px; align-items: center; border: 1px solid rgba(255,255,255,0.05); max-width: 400px;">
-                    <i class="fas fa-plus" style="color: var(--primary); opacity: 0.7;"></i>
+                    <i class="icon icon-plus" style="color: var(--primary); opacity: 0.7;"></i>
                     <input type="text" x-model="newName" placeholder="Buat playlist baru..."
                         @keydown.enter="createPlaylist()"
                         style="background: none; border: none; outline: none; color: white; flex: 1; font-family: inherit; font-size: 0.9rem; height: 40px;">
@@ -44,19 +44,19 @@ export const Playlists = (props) => {
             return html`
                             <div class="playlist-row" onclick="navigate('/playlists/${encodeURIComponent(name)}')">
                                 <div class="playlist-icon">
-                                    <i class="fas fa-list-ul"></i>
+                                    <i class="icon icon-list"></i>
                                 </div>
                                 <div class="playlist-details">
                                     <h3>${name}</h3>
                                     <p>${videos.length} Video</p>
                                 </div>
-                                <i class="fas fa-chevron-right" style="color: var(--text-dim); font-size: 0.8rem; opacity: 0.5;"></i>
+                                <i class="icon icon-chevron-right" style="color: var(--text-dim); font-size: 0.8rem; opacity: 0.5;"></i>
                             </div>
                         `;
         })}
                 ` : html`
                     <div style="text-align: center; padding: 60px 20px; opacity: 0.3; grid-column: 1 / -1;">
-                        <i class="fas fa-folder-open" style="font-size: 3rem; margin-bottom: 20px; display: block;"></i>
+                        <i class="icon icon-folder" style="font-size: 3rem; margin-bottom: 20px; display: block;"></i>
                         <p>Belum ada playlist.</p>
                     </div>
                 `}

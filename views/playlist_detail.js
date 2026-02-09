@@ -13,7 +13,7 @@ export const PlaylistDetail = (props) => {
         children: html`
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0 5px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <a href="/playlists" style="color: var(--text-dim);"><i class="fas fa-arrow-left"></i></a>
+                    <a href="/playlists" style="color: var(--text-dim);"><i class="icon icon-arrow-left"></i></a>
                     <h2 style="font-size: 1.3rem; margin: 0;">${title}</h2>
                 </div>
                 <span style="font-size: 0.8rem; color: var(--text-dim);">${results ? results.length : 0} Video</span>
@@ -24,7 +24,7 @@ export const PlaylistDetail = (props) => {
                     ${results.map(video => VideoCard(video))}
                 ` : html`
                     <div style="text-align: center; padding: 100px 20px; opacity: 0.5; grid-column: 1 / -1;">
-                        <i class="fas fa-list-ul" style="font-size: 3rem; margin-bottom: 20px; display: block;"></i>
+                        <i class="icon icon-list" style="font-size: 3rem; margin-bottom: 20px; display: block;"></i>
                         <p>Playlist kosong.</p>
                     </div>
                 `}

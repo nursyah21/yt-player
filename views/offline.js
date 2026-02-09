@@ -28,7 +28,7 @@ export const Offline = (props) => {
                                     ${formatDuration(video.duration)}
                                 </span>
                                 <div style="position: absolute; top: 8px; right: 8px; background: rgba(0,255,100,0.8); width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px;">
-                                    <i class="fas fa-check" style="color: black;"></i>
+                                    <i class="icon icon-check" style="color: black;"></i>
                                 </div>
                             </div>
                             <div class="video-meta">
@@ -44,7 +44,7 @@ export const Offline = (props) => {
                                 </div>
                                 <button onclick="deleteOffline(event, '${video.id}')"
                                     style="background: none; border: none; color: var(--text-dim); padding: 5px; cursor: pointer;">
-                                    <i class="fas fa-trash-alt"></i>
+                                    <i class="icon icon-trash"></i>
                                 </button>
                             </div>
                         </div>
@@ -52,7 +52,7 @@ export const Offline = (props) => {
                 ` : html`
                     <div style="text-align: center; padding: 100px 20px; opacity: 0.5; grid-column: 1 / -1;">
                         <div style="width: 80px; height: 80px; border-radius: 50%; background: #1a1a1e; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
-                            <i class="fas fa-cloud-download-alt" style="font-size: 1.5rem;"></i>
+                            <i class="icon icon-download-cloud" style="font-size: 1.5rem;"></i>
                         </div>
                         <p>Belum ada video offline.</p>
                         <a href="/" style="color: var(--primary); font-size: 0.9rem; text-decoration: none;">Cari & Download</a>

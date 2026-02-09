@@ -57,10 +57,10 @@ export const Play = (props) => {
                         
                         <div style="display: flex; gap: 10px;">
                             <button onclick="openPlaylistModal('${id}', '${encodeURIComponent(title)}', '${encodeURIComponent(uploader)}', '${thumbnail}', '${duration}', '${views}', '${channel_id}')" style="background: var(--surface-accent); border: none; width: 40px; height: 40px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                                <i class="fas fa-plus"></i>
+                                <i class="icon icon-plus"></i>
                             </button>
                             <a href="${stream_url}" download target="_blank" style="background: var(--surface-accent); border: none; width: 40px; height: 40px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; text-decoration: none;">
-                                <i class="fas fa-download"></i>
+                                <i class="icon icon-download"></i>
                             </a>
                         </div>
                     </div>

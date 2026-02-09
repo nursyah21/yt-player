@@ -16,10 +16,8 @@ export const Layout = (props) => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>${title || 'YT-Studio'}</title>
     <link rel="shortcut icon" href="/static/favicon.ico" type="image/x-icon">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <meta name="referrer" content="no-referrer">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="/static/alpine.min.js"></script>
     <style>
         :root {
             --bg: #0a0a0c; --surface: #16161a; --surface-accent: #23232a;
@@ -28,7 +26,7 @@ export const Layout = (props) => {
             --bottom-nav-height: 70px; --safe-area-inset-bottom: env(safe-area-inset-bottom);
         }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { margin: 0; padding: 0; background: var(--bg); color: var(--text-main); font-family: 'Outfit', sans-serif; overflow-x: hidden; display: flex; flex-direction: column; min-height: 100vh; }
+        body { margin: 0; padding: 0; background: var(--bg); color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; overflow-x: hidden; display: flex; flex-direction: column; min-height: 100vh; }
         header { position: sticky; top: 0; z-index: 100; background: rgba(10, 10, 12, 0.85); backdrop-filter: blur(20px); padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
         .logo { font-weight: 700; font-size: 1.2rem; letter-spacing: -0.5px; background: linear-gradient(135deg, #fff 0%, #a0a0ab 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; cursor: pointer; }
         .search-trigger { background: var(--surface); padding: 8px 15px; border-radius: 20px; display: flex; align-items: center; gap: 10px; color: var(--text-dim); font-size: 0.9rem; flex: 1; margin: 0 15px; border: 1px solid rgba(255, 255, 255, 0.03); }
@@ -45,9 +43,47 @@ export const Layout = (props) => {
         .desktop-sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
         .desktop-sidebar.open { display: block; transform: translateX(0); }
         .side-nav-item { display: flex; align-items: center; gap: 15px; padding: 12px 20px; border-radius: 12px; color: var(--text-dim); text-decoration: none; margin-bottom: 5px; transition: all 0.2s; font-weight: 500; font-size: 0.9rem; }
-        .side-nav-item i { font-size: 1.1rem; width: 24px; text-align: center; }
+        .side-nav-item i { width: 24px; text-align: center; display: flex; justify-content: center; }
         .side-nav-item:hover { background: var(--surface); color: white; }
         .side-nav-item.active { background: var(--surface-accent); color: var(--primary); }
+
+        /* Feather Icon System */
+        .icon {
+            display: inline-block;
+            width: 1.25em;
+            height: 1.25em;
+            background-color: currentColor;
+            -webkit-mask-size: contain;
+            mask-size: contain;
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+            -webkit-mask-position: center;
+            mask-position: center;
+            vertical-align: middle;
+        }
+        .icon-search { -webkit-mask-image: url(/static/feather/search.svg); mask-image: url(/static/feather/search.svg); }
+        .icon-menu { -webkit-mask-image: url(/static/feather/menu.svg); mask-image: url(/static/feather/menu.svg); }
+        .icon-x { -webkit-mask-image: url(/static/feather/x.svg); mask-image: url(/static/feather/x.svg); }
+        .icon-home { -webkit-mask-image: url(/static/feather/home.svg); mask-image: url(/static/feather/home.svg); }
+        .icon-list { -webkit-mask-image: url(/static/feather/list.svg); mask-image: url(/static/feather/list.svg); }
+        .icon-clock { -webkit-mask-image: url(/static/feather/clock.svg); mask-image: url(/static/feather/clock.svg); }
+        .icon-download { -webkit-mask-image: url(/static/feather/download.svg); mask-image: url(/static/feather/download.svg); }
+        .icon-play { -webkit-mask-image: url(/static/feather/play.svg); mask-image: url(/static/feather/play.svg); }
+        .icon-pause { -webkit-mask-image: url(/static/feather/pause.svg); mask-image: url(/static/feather/pause.svg); }
+        .icon-plus { -webkit-mask-image: url(/static/feather/plus.svg); mask-image: url(/static/feather/plus.svg); }
+        .icon-more-vertical { -webkit-mask-image: url(/static/feather/more-vertical.svg); mask-image: url(/static/feather/more-vertical.svg); }
+        .icon-user-plus { -webkit-mask-image: url(/static/feather/user-plus.svg); mask-image: url(/static/feather/user-plus.svg); }
+        .icon-user-minus { -webkit-mask-image: url(/static/feather/user-minus.svg); mask-image: url(/static/feather/user-minus.svg); }
+        .icon-arrow-left { -webkit-mask-image: url(/static/feather/arrow-left.svg); mask-image: url(/static/feather/arrow-left.svg); }
+        .icon-chevron-right { -webkit-mask-image: url(/static/feather/chevron-right.svg); mask-image: url(/static/feather/chevron-right.svg); }
+        .icon-trash { -webkit-mask-image: url(/static/feather/trash-2.svg); mask-image: url(/static/feather/trash-2.svg); }
+        .icon-check { -webkit-mask-image: url(/static/feather/check.svg); mask-image: url(/static/feather/check.svg); }
+        .icon-check-circle { -webkit-mask-image: url(/static/feather/check-circle.svg); mask-image: url(/static/feather/check-circle.svg); }
+        .icon-alert-circle { -webkit-mask-image: url(/static/feather/alert-circle.svg); mask-image: url(/static/feather/alert-circle.svg); }
+        .icon-info { -webkit-mask-image: url(/static/feather/info.svg); mask-image: url(/static/feather/info.svg); }
+        .icon-download-cloud { -webkit-mask-image: url(/static/feather/download-cloud.svg); mask-image: url(/static/feather/download-cloud.svg); }
+        .icon-folder { -webkit-mask-image: url(/static/feather/folder.svg); mask-image: url(/static/feather/folder.svg); }
+        .icon-rotate-ccw { -webkit-mask-image: url(/static/feather/rotate-ccw.svg); mask-image: url(/static/feather/rotate-ccw.svg); }
         main { padding: 15px; padding-bottom: calc(20px + var(--safe-area-inset-bottom)); flex: 1; transition: margin-left 0.3s; }
         
         @media (max-width: 991px) {
@@ -152,7 +188,7 @@ export const Layout = (props) => {
         <div class="logo">
             <span class="desktop-only" onclick="navigate('/')">YT-Studio</span>
             <span class="mobile-only" @click="sidebarOpen = !sidebarOpen">
-                <i class="fas" :class="sidebarOpen ? 'fa-times' : 'fa-bars'" style="font-size: 1.2rem; color: white;"></i>
+                <i class="icon" :class="sidebarOpen ? 'icon-x' : 'icon-menu'" style="font-size: 1.2rem; color: white;"></i>
             </span>
         </div>
         <div class="search-container" style="flex: 1; margin: 0 15px; position: relative; max-width: 600px;" 
@@ -179,14 +215,14 @@ export const Layout = (props) => {
                  }
              }" @click.outside="showSuggestions = false">
             <form action="/" method="GET" class="search-trigger">
-                <i class="fas fa-search"></i>
+                <i class="icon icon-search"></i>
                 <input type="text" x-ref="searchInput" name="q" x-model="query" @input.debounce.300ms="fetchSuggestions()" @keydown="handleKeydown($event)" placeholder="Cari video..." autocomplete="off" style="background:none; border:none; outline:none; color:inherit; width:100%; font-family:inherit;">
-                <i class="fas fa-times" x-show="query.length > 0" @click="query = ''; $refs.searchInput.focus()" style="cursor: pointer; padding: 5px; color: var(--text-dim);"></i>
+                <i class="icon icon-x" x-show="query.length > 0" @click="query = ''; $refs.searchInput.focus()" style="cursor: pointer; padding: 5px; color: var(--text-dim);"></i>
             </form>
             <div class="suggestions-dropdown" x-show="showSuggestions" x-transition style="display: none;">
                 <template x-for="(suggestion, index) in suggestions" :key="index">
                     <div class="suggestion-item" :class="{ 'selected': index === selectedIndex }" @click="selectSuggestion(suggestion)">
-                        <i class="fas fa-search opacity-30"></i>
+                        <i class="icon icon-search opacity-30"></i>
                         <span x-text="suggestion"></span>
                     </div>
                 </template>
@@ -201,10 +237,10 @@ export const Layout = (props) => {
         <div class="sidebar-overlay" x-show="sidebarOpen" x-transition.opacity @click="sidebarOpen = false" style="display: none;"></div>
         <aside class="desktop-sidebar" :class="sidebarOpen ? 'open' : ''">
             <div style="padding: 0 10px; margin-bottom: 20px;">
-                <a href="/" class="side-nav-item ${activePage === 'home' ? 'active' : ''}"><i class="fas fa-home"></i><span>Beranda</span></a>
-                <a href="/playlists" class="side-nav-item ${activePage === 'playlist' ? 'active' : ''}"><i class="fas fa-list-ul"></i><span>Playlist</span></a>
-                <a href="/history" class="side-nav-item ${activePage === 'history' ? 'active' : ''}"><i class="fas fa-history"></i><span>Histori</span></a>
-                <a href="/offline" class="side-nav-item ${activePage === 'offline' ? 'active' : ''}"><i class="fas fa-download"></i><span>Offline</span></a>
+                <a href="/" class="side-nav-item ${activePage === 'home' ? 'active' : ''}"><i class="icon icon-home"></i><span>Beranda</span></a>
+                <a href="/playlists" class="side-nav-item ${activePage === 'playlist' ? 'active' : ''}"><i class="icon icon-list"></i><span>Playlist</span></a>
+                <a href="/history" class="side-nav-item ${activePage === 'history' ? 'active' : ''}"><i class="icon icon-clock"></i><span>Histori</span></a>
+                <a href="/offline" class="side-nav-item ${activePage === 'offline' ? 'active' : ''}"><i class="icon icon-download"></i><span>Offline</span></a>
             </div>
 
             ${subscriptions && subscriptions.length > 0 ? html`
@@ -237,11 +273,11 @@ export const Layout = (props) => {
             <h4>${playingVideo.title}</h4>
             <p>${playingVideo.uploader}</p>
         </div>
-        <div class="mini-player-ctrl" onclick="event.stopPropagation(); const p = document.getElementById('bgPlayer'); if(p.paused) { p.play(); this.querySelector('i').className = 'fas fa-pause'; } else { p.pause(); this.querySelector('i').className = 'fas fa-play'; }">
-            <i class="fas fa-pause"></i>
+        <div class="mini-player-ctrl" onclick="event.stopPropagation(); const p = document.getElementById('bgPlayer'); if(p.paused) { p.play(); this.querySelector('i').classList.remove('icon-play'); this.querySelector('i').classList.add('icon-pause'); } else { p.pause(); this.querySelector('i').classList.remove('icon-pause'); this.querySelector('i').classList.add('icon-play'); }">
+            <i class="icon icon-pause"></i>
         </div>
         <div class="mini-player-ctrl close" onclick="event.stopPropagation(); const u = new window.URL(location.href); u.searchParams.delete('min'); localStorage.removeItem('videoTime_${playingVideo.id}'); location.href = u.pathname + u.search;">
-            <i class="fas fa-times"></i>
+            <i class="icon icon-x"></i>
         </div>
     </div>
     <script>
@@ -261,8 +297,8 @@ export const Layout = (props) => {
                             thumbnail: '${playingVideo.thumbnail}'
                         }, player);
                     }).catch(() => { 
-                        const playIcon = document.querySelector('.mini-player-ctrl i.fa-pause'); 
-                        if (playIcon) playIcon.className = 'fas fa-play'; 
+                        const playIcon = document.querySelector('.mini-player-ctrl i.icon-pause'); 
+                        if (playIcon) { playIcon.classList.remove('icon-pause'); playIcon.classList.add('icon-play'); } 
                     });
                 };
 
@@ -387,8 +423,8 @@ export const Layout = (props) => {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
             toast.className = 'toast toast-' + type;
-            const icon = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle');
-            toast.innerHTML = '<i class="fas ' + icon + '"></i> <span>' + message + '</span>';
+            const icon = type === 'success' ? 'icon-check-circle' : (type === 'error' ? 'icon-alert-circle' : 'icon-info');
+            toast.innerHTML = '<i class="icon ' + icon + '"></i> <span>' + message + '</span>';
             container.appendChild(toast);
             
             // Trigger animation
@@ -415,8 +451,8 @@ export const Layout = (props) => {
                 } else {
                     for (const name in playlists) {
                         html += \`
-                            <div class="playlist-select-item" onclick="saveToGlobalPlaylist('\${name.replace(/'/g, "\\\\'")}')">
-                                <i class="fas fa-list-ul"></i>
+                            <div class="playlist-select-item" onclick="saveToGlobalPlaylist(\${\`\${name}\`.replace(/'/g, "\\\\'")})">
+                                <i class="icon icon-list"></i>
                                 <span>\${name}</span>
                             </div>
                         \`;
@@ -467,7 +503,7 @@ export const Layout = (props) => {
     <div id="globalPlaylistModal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 400px; background: var(--surface); border-radius: 24px; z-index: 2001; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
         <div style="padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;">
             <h3 style="margin: 0; font-size: 1.1rem;">Simpan ke...</h3>
-            <i class="fas fa-times" onclick="hideGlobalModal()" style="cursor: pointer; opacity: 0.5;"></i>
+            <i class="icon icon-x" onclick="hideGlobalModal()" style="cursor: pointer; opacity: 0.5;"></i>
         </div>
         <div id="globalPlaylistModalList" style="max-height: 300px; overflow-y: auto; padding: 10px;"></div>
     </div>

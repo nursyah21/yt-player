@@ -24,7 +24,7 @@ export const History = (props) => {
                     ${results.map(video => VideoCard(video))}
                 ` : html`
                     <div style="text-align: center; padding: 100px 20px; opacity: 0.5; grid-column: 1 / -1;">
-                        <i class="fas fa-clock-rotate-left" style="font-size: 3rem; margin-bottom: 20px; display: block;"></i>
+                        <i class="icon icon-rotate-ccw" style="font-size: 3rem; margin-bottom: 20px; display: block;"></i>
                         <p>Belum ada histori tontonan.</p>
                     </div>
                 `}

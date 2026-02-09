@@ -14,20 +14,20 @@ export const VideoCard = (video) => html`
                 <h3 class="video-title">${video.title}</h3>
                 
                 <button class="menu-btn" onclick="toggleMenu(event, '${video.id}')">
-                    <i class="fas fa-ellipsis-v"></i>
+                    <i class="icon icon-more-vertical"></i>
                 </button>
                 
                 <div id="menu-${video.id}" class="video-menu" style="display: none;">
                     <div class="menu-item" onclick="event.stopPropagation(); toggleGlobalSub('${video.channel_id}', '${encodeURIComponent(video.uploader || '')}')">
-                        <i class="fas ${video.is_subscribed ? 'fa-user-minus' : 'fa-user-plus'}"></i> 
+                        <i class="icon ${video.is_subscribed ? 'icon-user-minus' : 'icon-user-plus'}"></i> 
                         <span>${video.is_subscribed ? 'Unsubscribe' : 'Subscribe'}</span>
                     </div>
                     <div class="menu-item" onclick="event.stopPropagation(); openPlaylistModal('${video.id}', '${encodeURIComponent(video.title)}', '${encodeURIComponent(video.uploader || '')}', '${video.thumbnail}', '${video.duration}', '${video.views}', '${video.channel_id}')">
-                        <i class="fas fa-plus"></i> 
+                        <i class="icon icon-plus"></i> 
                         <span>Simpan ke Playlist</span>
                     </div>
                     <div class="menu-item" onclick="event.stopPropagation(); window.location.href='/play?v=${video.id}&download=1'">
-                        <i class="fas fa-download"></i> 
+                        <i class="icon icon-download"></i> 
                         <span>Download</span>
                     </div>
                 </div>

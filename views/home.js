@@ -60,13 +60,13 @@ export const Home = (props) => {
             ${(!results || results.length === 0) ? html`
                 ${query ? html`
                     <div style="text-align: center; padding: 50px 20px; opacity: 0.5;">
-                        <i class="fas fa-search" style="font-size: 3rem; margin-bottom: 15px; display: block;"></i>
+                        <i class="icon icon-search" style="font-size: 3rem; margin-bottom: 15px; display: block;"></i>
                         <p>Video tidak ditemukan untuk "${query}"</p>
                     </div>
                 ` : html`
                     <div style="text-align: center; padding: 100px 20px;">
                         <div style="width: 80px; height: 80px; border-radius: 50%; background: #1a1a1e; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
-                            <i class="fas fa-play" style="color: var(--primary); font-size: 1.5rem; margin-left: 5px;"></i>
+                            <i class="icon icon-play" style="color: var(--primary); font-size: 1.5rem; margin-left: 5px;"></i>
                         </div>
                     </div>
 

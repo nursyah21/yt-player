@@ -1,3 +1,6 @@
+// Track startup time
+const startupTime = Date.now();
+
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
@@ -437,7 +440,9 @@ app.get('/playlists/:name', async (c) => {
 });
 
 const localIp = getLocalIp();
+const startupDuration = ((Date.now() - startupTime) / 1000).toFixed(4);
 console.log(`run on http://localhost:${PORT} | http://${localIp}:${PORT}`);
+console.log(`\n took ${startupDuration}s`);
 
 serve({ fetch: app.fetch, port: PORT });
 

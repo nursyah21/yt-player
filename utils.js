@@ -42,7 +42,7 @@ export const runYtDlp = (args, onProgress = null) => new Promise((resolve, rejec
         if (!isDump) {
             console.log(`\n[YT-DLP] Executing: yt-dlp ${args.filter(a => !a.startsWith('http')).join(' ')}`);
         } else {
-            console.log(`[YT-DLP] Fetching Metadata...`);
+            console.log(`[YT-DLP] Fetching metadata...`);
         }
 
         const p = spawn('yt-dlp', [...args]);
@@ -52,8 +52,11 @@ export const runYtDlp = (args, onProgress = null) => new Promise((resolve, rejec
             const str = d.toString();
             so += str;
 
-            // Filter: Jangan tampilkan JSON dump ke terminal
-            if (!str.trim().startsWith('{')) {
+            const trimmed = str.trim();
+            const isJson = trimmed.startsWith('{') || trimmed.startsWith('[');
+            const isProgress = trimmed.includes('[download]') || trimmed.includes('[info]');
+
+            if (!isDump && !isJson && (isProgress || trimmed.length < 200)) {
                 process.stdout.write(str);
             }
 
@@ -68,7 +71,15 @@ export const runYtDlp = (args, onProgress = null) => new Promise((resolve, rejec
         p.stderr.on('data', d => {
             const str = d.toString();
             se += str;
-            if (!str.includes('hls') && !str.includes('http')) { // Filter noise stderr
+
+            // Filter noise stderr - jangan tampilkan error teknis yang tidak penting
+            const isNoise = str.includes('hls') ||
+                str.includes('http') ||
+                str.includes('WARNING') ||
+                str.includes('Extracting URL') ||
+                str.includes('Downloading') && str.includes('webpage');
+
+            if (!isNoise && str.trim().length > 0) {
                 process.stderr.write(str);
             }
         });

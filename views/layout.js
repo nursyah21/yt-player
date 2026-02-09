@@ -325,11 +325,11 @@ export const Layout = (props) => {
                 ['nexttrack', null]
             ];
 
-            for (const [action, handler] of actionHandlers) {
+                for (const [action, handler] of actionHandlers) {
                 try {
                     navigator.mediaSession.setActionHandler(action, handler);
                 } catch (error) {
-                    console.log(\`The media session action "${action}" is not supported yet.\`);
+                    console.log(\`The media session action "\${action}" is not supported yet.\`);
                 }
             }
         };

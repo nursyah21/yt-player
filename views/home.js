@@ -59,9 +59,11 @@ export const Home = (props) => {
 
             ${(!results || results.length === 0) ? html`
                 ${query ? html`
-                    <div style="text-align: center; padding: 50px 20px; opacity: 0.5;">
-                        <i class="icon icon-search" style="font-size: 3rem; margin-bottom: 15px; display: block;"></i>
-                        <p>Video tidak ditemukan untuk "${query}"</p>
+                    <div style="text-align: center; padding: 100px 20px; opacity: 0.5;">
+                        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0 auto 20px;">
+                            <i class="icon icon-search" style="font-size: 3rem; margin-bottom: 15px; display: block;"></i>
+                            <p>Video tidak ditemukan: "${query}"</p>
+                        </div>
                     </div>
                 ` : html`
                     <div style="text-align: center; padding: 100px 20px;">

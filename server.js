@@ -64,6 +64,7 @@ const searchVideos = async (query, subs = [], page = 1) => {
         ]);
 
         const info = JSON.parse(stdout);
+        if (!info) return [];
         let entries = info.entries || [info];
 
         if (entries.length > pageSize) {
@@ -117,6 +118,7 @@ app.get('/play', async (c) => {
         try {
             const stdout = await runYtDlp(['--quiet', '--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`]);
             const info = JSON.parse(stdout);
+            if (!info) throw new Error("Gagal mengambil informasi video.");
             const bestFormat = info.formats.find(f => f.vcodec !== 'none' && f.acodec !== 'none' && f.height <= 480) || info.formats.find(f => f.vcodec !== 'none' && f.acodec !== 'none');
 
             videoData = {

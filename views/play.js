@@ -25,8 +25,7 @@ export const Play = (props) => {
                     <video id="mainPlayer" 
                         poster="${thumbnail}" 
                         style="width: 100%; height: 100%; object-fit: contain;" 
-                        controls autoplay playsinline
-                        crossorigin="anonymous">
+                        controls autoplay playsinline>
                         <source src="${stream_url}" type="video/mp4">
                         ${subtitles && subtitles.map(sub => html`<track kind="captions" src="${sub.url}" srclang="${sub.lang}" label="${sub.name}">`)}
                         Browser Anda tidak mendukung tag video.

@@ -12,6 +12,7 @@ export const Layout = (props) => {
     <link rel="shortcut icon" href="/static/favicon.ico" type="image/x-icon">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta name="referrer" content="no-referrer">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         :root {
@@ -278,7 +279,7 @@ export const Layout = (props) => {
                     });
                     document.querySelectorAll('form').forEach(function (form) {
                         const method = form.getAttribute('method');
-                        if (method && method.toUpperCase() === 'GET' && !form.querySelector('input[name=\\'min\\']')) {
+                        if (method && method.toUpperCase() === 'GET' && !form.querySelector('input[name="min"]')) {
                             const input = document.createElement('input');
                             input.type = 'hidden'; input.name = 'min'; input.value = minId;
                             form.appendChild(input);

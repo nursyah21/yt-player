@@ -35,7 +35,7 @@ const ytQueue = [];
 export const runYtDlp = (args) => new Promise((resolve, reject) => {
     const execute = () => {
         activeProcesses++;
-        const p = spawn('yt-dlp', args);
+        const p = spawn('yt-dlp', ['--ies', 'youtube', '--no-playlist', ...args]);
         let so = '', se = '';
         p.stdout.on('data', d => so += d.toString());
         p.stderr.on('data', d => se += d.toString());

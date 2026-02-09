@@ -98,8 +98,14 @@ export const Play = (props) => {
                             localStorage.setItem('videoTime_${id}', player.currentTime);
                         };
 
-                        // Auto-play might be blocked by browser without interaction
-                        player.play().catch(e => console.log('Autoplay blocked:', e));
+                        // Auto-play and MediaSession
+                        player.play().then(() => {
+                            updateMediaMetadata({
+                                title: '${safeStr(title)}',
+                                uploader: '${safeStr(uploader)}',
+                                thumbnail: '${thumbnail}'
+                            }, player);
+                        }).catch(e => console.log('Autoplay blocked:', e));
                     }
                 });
             </script>

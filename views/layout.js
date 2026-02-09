@@ -244,8 +244,23 @@ export const Layout = (props) => {
             if (player) {
                 const savedTime = localStorage.getItem('videoTime_${playingVideo.id}');
                 if (savedTime) player.currentTime = parseFloat(savedTime);
+                
                 player.ontimeupdate = () => { localStorage.setItem('videoTime_${playingVideo.id}', player.currentTime); };
-                player.play().catch(() => { const playIcon = document.querySelector('.mini-player-ctrl i.fa-pause'); if (playIcon) playIcon.className = 'fas fa-play'; });
+                
+                const playVideo = () => {
+                    player.play().then(() => {
+                        updateMediaMetadata({
+                            title: '${safeStr(playingVideo.title)}',
+                            uploader: '${safeStr(playingVideo.uploader)}',
+                            thumbnail: '${playingVideo.thumbnail}'
+                        }, player);
+                    }).catch(() => { 
+                        const playIcon = document.querySelector('.mini-player-ctrl i.fa-pause'); 
+                        if (playIcon) playIcon.className = 'fas fa-play'; 
+                    });
+                };
+
+                playVideo();
             }
         });
     </script>` : ''}
@@ -288,6 +303,36 @@ export const Layout = (props) => {
                 });
             }
         })();
+
+        // MediaSession API for background playback
+        window.updateMediaMetadata = function(video, playerElement) {
+            if (!('mediaSession' in navigator)) return;
+
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: video.title,
+                artist: video.uploader,
+                artwork: [
+                    { src: video.thumbnail, sizes: '512x512', type: 'image/png' }
+                ]
+            });
+
+            const actionHandlers = [
+                ['play', () => { playerElement.play(); }],
+                ['pause', () => { playerElement.pause(); }],
+                ['seekbackward', (details) => { playerElement.currentTime = Math.max(playerElement.currentTime - (details.seekOffset || 10), 0); }],
+                ['seekforward', (details) => { playerElement.currentTime = Math.min(playerElement.currentTime + (details.seekOffset || 10), playerElement.duration); }],
+                ['previoustrack', null],
+                ['nexttrack', null]
+            ];
+
+            for (const [action, handler] of actionHandlers) {
+                try {
+                    navigator.mediaSession.setActionHandler(action, handler);
+                } catch (error) {
+                    console.log(`The media session action "${action}" is not supported yet.`);
+                }
+            }
+        };
 
         // Global functions for Menu, Subscription, and Playlist
         window.activeMenuId = null;

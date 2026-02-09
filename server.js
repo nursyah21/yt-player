@@ -3,6 +3,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import fs from 'fs-extra';
 import path from 'path';
+import os from 'os';
 import { runYtDlp, CACHE_DIR, META_DIR, SUB_DIR, THUMB_DIR, HISTORY_FILE, PLAYLISTS_FILE, SUBSCRIPTIONS_FILE } from './utils.js';
 import { Home } from './views/home.js';
 import { Play } from './views/play.js';
@@ -298,9 +299,35 @@ app.get('/playlists/:name', async (c) => {
     return c.html(PlaylistDetail({ title: name, results, playingVideo, subscriptions }));
 });
 
-console.log(`Server running on http://localhost:${PORT}`);
+const localIp = getLocalIp();
+
+console.log(`\n🚀 Server is ready!`);
+console.log(`- Local:   http://localhost:${PORT}`);
+console.log(`- Network: http://${localIp}:${PORT}\n`);
 
 serve({
     fetch: app.fetch,
     port: PORT
 });
+
+function getLocalIp() {
+    const interfaces = os.networkInterfaces();
+    let backupIp = null;
+
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                // Prioritaskan alamat 192.168.x.x (WiFi/LAN Lokal)
+                if (iface.address.startsWith('192.168.')) {
+                    return iface.address;
+                }
+                // Simpan IP lain sebagai cadangan (misal WSL 172.x atau lainnya)
+                // Tapi skip alamat APIPA 169.254
+                if (!iface.address.startsWith('169.254.')) {
+                    backupIp = iface.address;
+                }
+            }
+        }
+    }
+    return backupIp || '127.0.0.1';
+}

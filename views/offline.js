@@ -33,7 +33,6 @@ export const Offline = (props) => {
                             </div>
                             <div class="video-meta">
                                 <div class="channel-avatar">
-                                    <i class="fas fa-arrow-down" style="font-size: 0.7rem;"></i>
                                 </div>
                                 <div class="video-info">
                                     <h3 class="video-title">${video.title}</h3>

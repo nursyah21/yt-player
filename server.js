@@ -442,7 +442,7 @@ app.get('/playlists/:name', async (c) => {
 const localIp = getLocalIp();
 const startupDuration = ((Date.now() - startupTime) / 1000).toFixed(4);
 console.log(`run on http://localhost:${PORT} | http://${localIp}:${PORT}`);
-console.log(`\n took ${startupDuration}s`);
+console.log(`took ${startupDuration}s`);
 
 serve({ fetch: app.fetch, port: PORT });
 

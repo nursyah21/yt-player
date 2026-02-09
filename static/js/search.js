@@ -72,11 +72,12 @@ function handleSearchKeydown(e) {
             selectSuggestion($items.eq(selectedIndex).find('span').text());
         } else {
             $('#suggestionsDropdown').hide();
-            // Only trigger server search if we are on Home
+            const query = $('#videoQuery').val().trim();
             if (activeSection === 'home') {
                 searchVideos();
             } else {
-                // Already filtered via input, just hide keyboard/focus
+                // Manually trigger filter even if text didn't change (fixes the bug)
+                filterLocalContent(query);
                 $('#videoQuery').blur();
             }
         }

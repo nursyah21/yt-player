@@ -19,8 +19,8 @@ export const Play = (props) => {
         activePage: 'play',
         subscriptions,
         children: html`
-            <div style="max-width: 1000px; margin: 0 auto;">
-                <div style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 30px rgba(0,0,0,0.5);">
+            <div style="max-width: 1000px; margin: 0 auto; padding: 0 20px;">
+                <div style="position: relative; width: 100%; aspect-ratio: 16/9; max-height: 60vh; background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 15px; box-shadow: 0 4px 30px rgba(0,0,0,0.5);">
                     <video id="mainPlayer" 
                         poster="${thumbnail}" 
                         style="width: 100%; height: 100%; object-fit: contain;" 
@@ -34,7 +34,7 @@ export const Play = (props) => {
                     <h1 style="font-size: 1.2rem; font-weight: 700; margin: 0 0 10px 0; line-height: 1.4;">${title}</h1>
                     
                     <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center; justify-content: space-between; margin-bottom: 15px;">
-                        <div onclick="navigate('/?q=${encodeURIComponent(uploader)}')" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                        <a href="/?q=${encodeURIComponent(uploader)}" style="display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'" title="Lihat channel ${uploader}">
                             <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--surface-accent); display: flex; align-items: center; justify-content: center; font-weight: 700;">
                                 ${(uploader || 'C').charAt(0).toUpperCase()}
                             </div>
@@ -42,7 +42,7 @@ export const Play = (props) => {
                                 <h3 style="margin: 0; font-size: 0.95rem; font-weight: 600;">${uploader}</h3>
                                 <p style="margin: 2px 0 0; font-size: 0.75rem; color: var(--text-dim);">${formatViews(views)} x tonton</p>
                             </div>
-                        </div>
+                        </a>
                         
                         <div style="display: flex; gap: 10px; align-items: center;">
                             <button onclick="toggleGlobalSub('${channel_id}', '${safeStr(uploader)}')" 

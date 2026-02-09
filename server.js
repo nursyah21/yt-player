@@ -88,26 +88,27 @@ const searchVideos = async (query, subs = [], page = 1) => {
         }
 
         const results = await Promise.all(entries.map(async (entry) => {
-            if (!entry) return null;
-            const isOffline = await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.webm`)) || await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.mp4`));
-            const channelId = entry.channel_id || entry.uploader_id;
+            if (!entry || !entry.id) return null; // Validasi entry dan id
 
-            let thumbnail = entry.thumbnail || entry.thumbnails?.[0]?.url;
+            const isOffline = await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.webm`)) || await fs.pathExists(path.join(CACHE_DIR, `${entry.id}.mp4`));
+            const channelId = entry.channel_id || entry.uploader_id || 'unknown';
+
+            let thumbnail = entry.thumbnail || entry.thumbnails?.[0]?.url || '';
             if (isOffline) {
                 const metaPath = path.join(META_DIR, `${entry.id}.json`);
                 if (await fs.pathExists(metaPath)) {
                     const meta = await fs.readJson(metaPath);
-                    thumbnail = meta.thumbnail;
+                    thumbnail = meta.thumbnail || thumbnail;
                 }
             }
 
             return {
                 id: entry.id,
-                title: entry.title,
+                title: entry.title || 'Untitled',
                 thumbnail: thumbnail,
-                uploader: entry.uploader || entry.channel,
+                uploader: entry.uploader || entry.channel || 'Unknown',
                 channel_id: channelId,
-                duration: entry.duration,
+                duration: entry.duration || 0,
                 views: entry.view_count || 0,
                 is_offline: isOffline,
                 is_subscribed: subs.some(s => s.channel_id === channelId)

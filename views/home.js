@@ -24,7 +24,8 @@ export const Home = (props) => {
                 
                 .loading-indicator {
                     grid-column: 1 / -1;
-                    padding: 30px;
+                    padding: 30px 20px;
+                    padding-bottom: 120px; /* Extra padding untuk mini-player */
                     text-align: center;
                     color: var(--text-dim);
                     font-weight: 600;
@@ -43,7 +44,7 @@ export const Home = (props) => {
                 
                 ${query && results && results.length > 0 ? html`
                     <div id="loadingSentinel" class="loading-indicator">
-                        <span>...</span>
+                        <span>Memuat...</span>
                     </div>
                 ` : ''}
             </div>

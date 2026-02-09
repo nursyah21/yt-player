@@ -42,9 +42,9 @@ export const VideoCard = (video) => html`
                 </div>
 
                 <div class="video-subtext" style="margin-top: 5px; font-size: 0.8rem; color: var(--text-dim);">
-                    <div onclick="event.stopPropagation(); navigate('/?q=${encodeURIComponent(video.uploader || '')}')" style="cursor: pointer; margin-bottom: 2px;">
+                    <a href="/?q=${encodeURIComponent(video.uploader || '')}" onclick="event.stopPropagation();" style="color: var(--text-dim); text-decoration: none; display: block; margin-bottom: 2px; transition: color 0.2s;" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-dim)'" title="Lihat channel ${video.uploader}">
                         ${video.uploader}
-                    </div>
+                    </a>
                     <div>${formatViews(video.views)} x tonton</div>
                 </div>
             </div>

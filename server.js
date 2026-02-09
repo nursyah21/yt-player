@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
-import { createServer } from 'node:https';
+import { createServer as createHttpsServer } from 'node:https';
+import { createServer as createHttpServer } from 'node:http';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import fs from 'fs-extra';
@@ -300,25 +301,9 @@ app.get('/playlists/:name', async (c) => {
     return c.html(PlaylistDetail({ title: name, results, playingVideo, subscriptions }));
 });
 
-// Load SSL Certificates
-const CERT_PATH = path.join(process.cwd(), '.cert');
-const keyPath = path.join(CERT_PATH, 'key.pem');
-const certPath = path.join(CERT_PATH, 'cert.pem');
-
-let serverOptions = {};
-let protocol = 'http';
-
-if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
-    try {
-        serverOptions = {
-            key: fs.readFileSync(keyPath),
-            cert: fs.readFileSync(certPath),
-        };
-        protocol = 'https';
-    } catch (err) {
-        console.error('❌ Failed to load SSL certificates:', err);
-    }
-}
+// --- DUAL SERVER CONFIGURATION ---
+const HTTP_PORT = 8000;
+const HTTPS_PORT = 8443;
 
 function getLocalIp() {
     const interfaces = os.networkInterfaces();
@@ -332,13 +317,38 @@ function getLocalIp() {
 
 const localIp = getLocalIp();
 
-console.log(`\n🚀 Server is ready!`);
-console.log(`- Local:   ${protocol}://localhost:${PORT}`);
-console.log(`- Network: ${protocol}://${localIp}:${PORT}\n`);
+// 1. Setup HTTPS if certificates exist
+const CERT_PATH = path.join(process.cwd(), '.cert');
+const keyPath = path.join(CERT_PATH, 'key.pem');
+const certPath = path.join(CERT_PATH, 'cert.pem');
 
+if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    try {
+        const httpsOptions = {
+            key: fs.readFileSync(keyPath),
+            cert: fs.readFileSync(certPath),
+        };
+
+        serve({
+            fetch: app.fetch,
+            port: HTTPS_PORT,
+            createServer: createHttpsServer,
+            serverOptions: httpsOptions
+        });
+        console.log(`✅ HTTPS Server: https://localhost:${HTTPS_PORT} atau https://${localIp}:${HTTPS_PORT}`);
+    } catch (err) {
+        console.error('❌ Failed to start HTTPS server:', err.message);
+    }
+} else {
+    console.log('ℹ️ HTTPS disabled. Run "node generate-certs.js" to enable.');
+}
+
+// 2. Always setup HTTP
 serve({
     fetch: app.fetch,
-    port: PORT,
-    createServer: protocol === 'https' ? createServer : undefined,
-    serverOptions
+    port: HTTP_PORT,
+    createServer: createHttpServer
 });
+
+console.log(`🚀 HTTP Server:  http://localhost:${HTTP_PORT}  atau http://${localIp}:${HTTP_PORT}`);
+console.log(`\nSilakan pilih mode yang ingin Anda tes.`);

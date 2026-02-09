@@ -1,10 +1,11 @@
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
+import { stream } from 'hono/streaming';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
-import { runYtDlp, CACHE_DIR, META_DIR, SUB_DIR, THUMB_DIR, HISTORY_FILE, PLAYLISTS_FILE, SUBSCRIPTIONS_FILE, downloadProgress } from './utils.js';
+import { runYtDlp, CACHE_DIR, META_DIR, SUB_DIR, THUMB_DIR, HISTORY_FILE, PLAYLISTS_FILE, SUBSCRIPTIONS_FILE, downloadProgress, formatSize } from './utils.js';
 import { Home } from './views/home.js';
 import { Play } from './views/play.js';
 import { History } from './views/history.js';
@@ -22,8 +23,58 @@ const CACHE_DURATION = 30000; // 30 detik
 
 // Static Files
 app.use('/static/*', serveStatic({ root: './' }));
-app.use('/offline/*', serveStatic({ root: './cached_videos', rewriteRequestPath: (path) => path.replace(/^\/offline/, '') }));
 app.use('/thumb/*', serveStatic({ root: './cached_videos/thumbnails', rewriteRequestPath: (path) => path.replace(/^\/thumb/, '') }));
+
+// Custom Handler for Offline Videos with Range Support (CRITICAL for iOS/iPhone)
+app.get('/offline/:filename', async (c) => {
+    const filename = c.req.param('filename');
+    const filePath = path.join(CACHE_DIR, filename);
+
+    if (!(await fs.pathExists(filePath))) {
+        return c.notFound();
+    }
+
+    const stat = await fs.stat(filePath);
+    const fileSize = stat.size;
+    const range = c.req.header('Range');
+
+    c.header('Accept-Ranges', 'bytes');
+    c.header('Content-Type', 'video/mp4');
+
+    if (range) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+        if (start >= fileSize) {
+            c.header('Content-Range', `bytes */${fileSize}`);
+            return c.text('Range Not Satisfiable', 416);
+        }
+
+        const chunksize = (end - start) + 1;
+        console.log(`[STREAM] Range: ${start}-${end} | Size: ${formatSize(chunksize)} | File: ${filename}`);
+
+        c.status(206);
+        c.header('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+        c.header('Content-Length', chunksize.toString());
+
+        return stream(c, async (stream) => {
+            const fileStream = fs.createReadStream(filePath, { start, end });
+            for await (const chunk of fileStream) {
+                await stream.write(chunk);
+            }
+        });
+    } else {
+        console.log(`[STREAM] Full Request | File: ${filename}`);
+        c.header('Content-Length', fileSize.toString());
+        return stream(c, async (stream) => {
+            const fileStream = fs.createReadStream(filePath);
+            for await (const chunk of fileStream) {
+                await stream.write(chunk);
+            }
+        });
+    }
+});
 
 // Middleware: Persistent Player State and Subscriptions
 app.use('*', async (c, next) => {
@@ -246,13 +297,12 @@ app.get('/play', async (c) => {
     }));
 });
 
-// Fungsi Download: MP4 (H.264+AAC) untuk iOS compatibility dengan progress detail
+// Fungsi Download: Tahap 1: Metadata, Tahap 2: Single-File MP4 (Format 18/Best Compatible)
+// Dipilih format tunggal agar TIDAK perlu merge (No Merge) dan paling stabil di iPhone.
 async function startBackgroundDownload(videoId) {
     if (downloadProgress.has(videoId)) return;
 
     const mp4Path = path.join(CACHE_DIR, `${videoId}.mp4`);
-    const audioPath = path.join(CACHE_DIR, `${videoId}_audio.m4a`);
-    const videoPath = path.join(CACHE_DIR, `${videoId}_video.mp4`);
 
     if (await fs.pathExists(mp4Path)) {
         downloadProgress.set(videoId, 100);
@@ -264,91 +314,57 @@ async function startBackgroundDownload(videoId) {
     try {
         const metaPath = path.join(META_DIR, `${videoId}.json`);
 
-        // TAHAP 1: Extract URL (0-20%)
-        console.log(`\n[DOWNLOAD] Tahap 1/4: Mengekstrak URL untuk ${videoId}...`);
+        // TAHAP 1: Extract URL & Metadata (0-20%)
+        console.log(`\n[DOWNLOAD] Tahap 1/2: Mengekstrak metadata untuk ${videoId}...`);
         downloadProgress.set(videoId, 5);
 
         const stdout = await runYtDlp(['--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`]);
         const info = JSON.parse(stdout);
-        downloadProgress.set(videoId, 20);
-        console.log(`[DOWNLOAD] ✓ URL berhasil diekstrak`);
+        downloadProgress.set(videoId, 15);
 
         // Download Thumbnail Lokal
         const thumbUrl = info.thumbnail;
-        const thumbExt = '.webp';
-        const thumbLocalPath = path.join(THUMB_DIR, `${videoId}${thumbExt}`);
-
+        const thumbLocalPath = path.join(THUMB_DIR, `${videoId}.webp`);
         try {
             const thumbRes = await fetch(thumbUrl);
             const thumbBuffer = await thumbRes.arrayBuffer();
             await fs.writeFile(thumbLocalPath, Buffer.from(thumbBuffer));
-            console.log(`[THUMB] Downloaded: ${videoId}`);
-        } catch (te) {
-            console.error('[THUMB] Gagal download thumbnail:', te);
-        }
+        } catch (e) { console.error('[THUMB] Gagal:', e.message); }
 
         const meta = {
             id: videoId,
             title: info.title,
             uploader: info.uploader || info.channel,
             channel_id: info.channel_id,
-            thumbnail: `/thumb/${videoId}${thumbExt}`,
+            thumbnail: `/thumb/${videoId}.webp`,
             duration: info.duration,
             views: info.view_count
         };
         await fs.writeJson(metaPath, meta, { spaces: 4 });
+        downloadProgress.set(videoId, 20);
 
-        // TAHAP 2: Download Audio (21-55%)
-        console.log(`[DOWNLOAD] Tahap 2/4: Mendownload audio...`);
+        // TAHAP 2: Download File Tunggal (21-100%)
+        // Prioritas ke format 18 (360p MP4) atau format tunggal terbaik lainnya
+        console.log(`[DOWNLOAD] Tahap 2/2: Mendownload file MP4 tunggal (Format 18 Optimized)...`);
+
         await runYtDlp([
             '--no-warnings',
-            '-f', 'bestaudio[ext=m4a]/bestaudio',
-            '--extract-audio',
-            '--audio-format', 'm4a',
-            '-o', audioPath,
+            '-f', '18/best[height<=480][ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4][vcodec!=none][acodec!=none]/best',
+            '--no-part', // Langsung jadi mp4 agar iPhone bisa memantau progres file dengan baik
+            '-o', mp4Path,
             `https://www.youtube.com/watch?v=${videoId}`
         ], (progress) => {
-            // Map progress 0-100 ke range 21-55
-            const mappedProgress = 21 + (progress * 0.34);
-            downloadProgress.set(videoId, mappedProgress);
+            // Map progress 0-100 ke range 20-100 secara akurat
+            const mappedProgress = 20 + (progress * 0.8);
+            downloadProgress.set(videoId, Math.min(99, Math.floor(mappedProgress)));
         });
-        console.log(`[DOWNLOAD] ✓ Audio selesai didownload`);
 
-        // TAHAP 3: Download Video (56-90%)
-        console.log(`[DOWNLOAD] Tahap 3/4: Mendownload video...`);
-        await runYtDlp([
-            '--no-warnings',
-            '-f', 'bestvideo[height<=480][ext=mp4]/bestvideo[ext=mp4]/bestvideo',
-            '-o', videoPath,
-            `https://www.youtube.com/watch?v=${videoId}`
-        ], (progress) => {
-            // Map progress 0-100 ke range 56-90
-            const mappedProgress = 56 + (progress * 0.34);
-            downloadProgress.set(videoId, mappedProgress);
-        });
-        console.log(`[DOWNLOAD] ✓ Video selesai didownload`);
-
-        // TAHAP 4: Merge menggunakan FFmpeg (91-100%)
-        console.log(`[DOWNLOAD] Tahap 4/4: Menggabungkan audio dan video menggunakan FFmpeg...`);
-        downloadProgress.set(videoId, 91);
-
-        const { execSync } = await import('child_process');
-        try {
-            execSync(`ffmpeg -y -i "${videoPath}" -i "${audioPath}" -c copy -movflags +faststart "${mp4Path}"`, { stdio: 'ignore' });
-        } catch (mergeErr) {
-            execSync(`ffmpeg -y -i "${videoPath}" -i "${audioPath}" -c:v libx264 -c:a aac -preset superfast -movflags +faststart "${mp4Path}"`, { stdio: 'ignore' });
-        }
-
-        downloadProgress.set(videoId, 98);
-        await fs.remove(audioPath).catch(() => { });
-        await fs.remove(videoPath).catch(() => { });
         downloadProgress.set(videoId, 100);
-        console.log(`[DOWNLOAD] ✓✓✓ Download selesai: ${videoId}\n`);
+        console.log(`[DOWNLOAD] ✓✓✓ Download Selesai (Format 18): ${videoId}\n`);
+
     } catch (e) {
-        console.error(`[DOWNLOAD] ✗ Gagal untuk ${videoId}:`, e.message);
+        console.error(`[DOWNLOAD] ✗ Gagal:`, e.message);
         downloadProgress.delete(videoId);
-        await fs.remove(audioPath).catch(() => { });
-        await fs.remove(videoPath).catch(() => { });
         await fs.remove(mp4Path).catch(() => { });
     }
 }
@@ -463,7 +479,7 @@ app.delete('/delete_offline/:id', async (c) => {
     const id = c.req.param('id');
     try {
         await fs.remove(path.join(CACHE_DIR, `${id}.mp4`));
-        await fs.remove(path.join(THUMB_DIR, `${id}.webp`));
+        // Thumbnail TIDAK dihapus karena masih digunakan di History
         await fs.remove(path.join(META_DIR, `${id}.json`));
         return c.json({ status: 'ok' });
     } catch (e) { return c.json({ status: 'error' }, 500); }

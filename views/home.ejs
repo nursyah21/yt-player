@@ -1,0 +1,102 @@
+<style>
+    .grid-container {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    @media (min-width: 600px) {
+        .grid-container {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media (min-width: 1200px) {
+        .grid-container {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+
+    @media (min-width: 1600px) {
+        .grid-container {
+            grid-template-columns: repeat(4, 1fr);
+        }
+    }
+
+    .video-card {
+        margin-bottom: 0;
+    }
+</style>
+
+<div class="grid-container">
+    <% if (results && results.length> 0) { %>
+        <% results.forEach(function(video) { %>
+            <div class="video-card" onclick="navigate('/play?v=<%= video.id %>')">
+                <div class="thumb-container">
+                    <img src="<%= video.thumbnail %>" loading="lazy">
+                    <span class="duration-tag">
+                        <%= typeof video.duration==='number' ? Math.floor(video.duration/60) + ':' +
+                            (video.duration%60).toString().padStart(2,'0') : video.duration %>
+                    </span>
+                </div>
+                <div class="video-meta">
+                    <div class="channel-avatar">
+                        <%= (video.uploader || 'C' ).charAt(0).toUpperCase() %>
+                    </div>
+                    <div class="video-info">
+                        <h3 class="video-title">
+                            <%= video.title %>
+                        </h3>
+                        <div class="video-subtext">
+                            <span>
+                                <%= video.uploader %>
+                            </span>
+                            <span class="dot"></span>
+                            <span>
+                                <% let viewText='' ; if (video.views) { if (video.views> 1000000) viewText =
+                                    (video.views/1000000).toFixed(1) + 'jt';
+                                    else if (video.views > 1000) viewText = (video.views/1000).toFixed(0) + 'rb';
+                                    else viewText = video.views;
+                                    viewText += ' x tonton';
+                                    }
+                                    %>
+                                    <%= viewText %>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <% }); %>
+                <% } %>
+</div>
+
+<% if (!results || results.length===0) { %>
+    <% if (query) { %>
+        <div style="text-align: center; padding: 50px 20px; opacity: 0.5;">
+            <i class="fas fa-search" style="font-size: 3rem; margin-bottom: 15px; display: block;"></i>
+            <p>Video tidak ditemukan untuk "<%= query %>"</p>
+        </div>
+        <% } else { %>
+            <div style="text-align: center; padding: 100px 20px;">
+                <div
+                    style="width: 80px; height: 80px; border-radius: 50%; background: #1a1a1e; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
+                    <i class="fas fa-play" style="color: var(--primary); font-size: 1.5rem; margin-left: 5px;"></i>
+                </div>
+                <h2 style="font-size: 1.2rem; margin-bottom: 8px;">Selamat Datang</h2>
+                <p style="font-size: 0.85rem; color: var(--text-dim);">Cari lagu atau artis favorit Anda untuk memulai.
+                </p>
+            </div>
+
+            <div style="margin-top: 40px;">
+                <h3 style="font-size: 0.9rem; margin-bottom: 15px; padding-left: 5px;">Populer Sekarang</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                    <% ['Terpopuler', 'Live Indonesia' , 'Mix Musik' , 'Gaming' , 'Podcast' ].forEach(function(tag) { %>
+                        <a href="/?q=<%= encodeURIComponent(tag) %>"
+                            style="background: var(--surface); padding: 8px 16px; border-radius: 20px; font-size: 0.8rem; text-decoration: none; color: inherit; border: 1px solid rgba(255,255,255,0.05);">
+                            <%= tag %>
+                        </a>
+                        <% }); %>
+                </div>
+            </div>
+            <% } %>
+                <% } %>

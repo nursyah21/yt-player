@@ -25,7 +25,7 @@ export const Play = (props) => {
                         poster="${thumbnail}" 
                         style="width: 100%; height: 100%; object-fit: contain;" 
                         controls autoplay playsinline>
-                        <source src="${stream_url}" type="${stream_url.endsWith('.webm') ? 'video/webm' : 'video/mp4'}">
+                        ${stream_url ? html`<source src="${stream_url}" type="${stream_url.includes('.webm') ? 'video/webm' : 'video/mp4'}">` : ''}
                         ${subtitles && subtitles.map(sub => html`<track kind="captions" src="${sub.url}" srclang="${sub.lang}" label="${sub.name}">`)}
                     </video>
                 </div>

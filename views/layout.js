@@ -268,55 +268,77 @@ export const Layout = (props) => {
     <div class="mini-player-overlay" onclick="location.href='/play?v=${playingVideo.id}&t=' + Math.floor(document.getElementById('bgPlayer')?.currentTime || 0)">
         <div style="width: 50px; height: 50px; border-radius: 6px; overflow: hidden; background: #000; flex-shrink: 0; position: relative;">
             <img src="${playingVideo.thumbnail}" style="width: 100%; height: 100%; object-fit: cover;" alt="${playingVideo.title}">
-            <div id="audioVisualizer" style="position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: var(--primary); transform-origin: left; transition: width 0.1s;"></div>
+            <div id="audioVisualizer" style="position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: var(--primary); transform-origin: left; transition: width 0.1s; width: 0%;"></div>
         </div>
         <div class="mini-player-info">
             <h4>${playingVideo.title}</h4>
             <p>${playingVideo.uploader}</p>
         </div>
-        <div class="mini-player-ctrl" onclick="event.stopPropagation(); const p = document.getElementById('bgPlayer'); if(p.paused) { p.play(); this.querySelector('i').classList.remove('icon-play'); this.querySelector('i').classList.add('icon-pause'); } else { p.pause(); this.querySelector('i').classList.remove('icon-pause'); this.querySelector('i').classList.add('icon-play'); }">
+        <div class="mini-player-ctrl" onclick="event.stopPropagation(); const p = document.getElementById('bgPlayer'); if(!p) return; if(p.paused) { p.play(); this.querySelector('i').classList.remove('icon-play'); this.querySelector('i').classList.add('icon-pause'); } else { p.pause(); this.querySelector('i').classList.remove('icon-pause'); this.querySelector('i').classList.add('icon-play'); }">
             <i class="icon icon-pause"></i>
         </div>
         <div class="mini-player-ctrl close" onclick="event.stopPropagation(); const u = new window.URL(location.href); u.searchParams.delete('min'); localStorage.removeItem('videoTime_${playingVideo.id}'); location.href = u.pathname + u.search;">
             <i class="icon icon-x"></i>
         </div>
-        <!-- Audio-only player untuk miniplayer (lebih cepat) -->
-        <audio id="bgPlayer" src="${playingVideo.stream_url}" autoplay style="display: none;"></audio>
+        <!-- Audio-only player -->
+        <audio id="bgPlayer" src="${playingVideo.stream_url || ''}" autoplay style="display: none;"></audio>
     </div>
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
+        document.addEventListener('DOMContentLoaded', async function () {
             const player = document.getElementById('bgPlayer');
             const visualizer = document.getElementById('audioVisualizer');
+            const playPauseBtn = document.querySelector('.mini-player-ctrl i.icon-pause')?.parentElement;
             
-            if (player) {
-                const savedTime = localStorage.getItem('videoTime_${playingVideo.id}');
-                if (savedTime) player.currentTime = parseFloat(savedTime);
-                
-                player.ontimeupdate = () => { 
-                    localStorage.setItem('videoTime_${playingVideo.id}', player.currentTime);
-                    
-                    // Update visualizer
-                    if (visualizer && player.duration) {
-                        const progress = (player.currentTime / player.duration) * 100;
-                        visualizer.style.width = progress + '%';
-                    }
-                };
-                
-                const playAudio = () => {
-                    player.play().then(() => {
-                        updateMediaMetadata({
-                            title: '${safeStr(playingVideo.title)}',
-                            uploader: '${safeStr(playingVideo.uploader)}',
-                            thumbnail: '${playingVideo.thumbnail}'
-                        }, player);
-                    }).catch(() => { 
-                        const playIcon = document.querySelector('.mini-player-ctrl i.icon-pause'); 
-                        if (playIcon) { playIcon.classList.remove('icon-pause'); playIcon.classList.add('icon-play'); } 
-                    });
-                };
+            if (!player) return;
 
-                playAudio();
+            // Jika stream_url kosong (online mode tanpa cache), ambil dari API
+            if (!player.src || player.src === window.location.href) {
+                console.log('[MINI] Fetching dynamic stream...');
+                try {
+                    const res = await fetch('/api/stream/${playingVideo.id}');
+                    const data = await res.json();
+                    if (data.stream_url) {
+                        player.src = data.stream_url;
+                        console.log('[MINI] Stream loaded');
+                    } else {
+                        throw new Error('No stream URL found');
+                    }
+                } catch (err) {
+                    console.error('[MINI] Failed to load stream:', err);
+                    if (playPauseBtn) {
+                        playPauseBtn.style.opacity = '0.3';
+                        playPauseBtn.style.pointerEvents = 'none';
+                    }
+                    return;
+                }
             }
+            
+            const savedTime = localStorage.getItem('videoTime_${playingVideo.id}');
+            if (savedTime) player.currentTime = parseFloat(savedTime);
+            
+            player.ontimeupdate = () => { 
+                localStorage.setItem('videoTime_${playingVideo.id}', player.currentTime);
+                if (visualizer && player.duration) {
+                    const progress = (player.currentTime / player.duration) * 100;
+                    visualizer.style.width = progress + '%';
+                }
+            };
+            
+            const playAudio = () => {
+                player.play().then(() => {
+                    updateMediaMetadata({
+                        title: '${safeStr(playingVideo.title)}',
+                        uploader: '${safeStr(playingVideo.uploader)}',
+                        thumbnail: '${playingVideo.thumbnail}'
+                    }, player);
+                }).catch((err) => { 
+                    console.log('Autoplay blocked or source error:', err.message);
+                    const playIcon = document.querySelector('.mini-player-ctrl i.icon-pause'); 
+                    if (playIcon) { playIcon.classList.remove('icon-pause'); playIcon.classList.add('icon-play'); } 
+                });
+            };
+
+            playAudio();
         });
     </script>` : ''}
 

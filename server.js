@@ -373,6 +373,21 @@ app.get('/api/search', async (c) => {
     return c.html(results.map(v => VideoCard(v)).join(''));
 });
 
+app.get('/api/stream/:id', async (c) => {
+    const videoId = c.req.param('id');
+    try {
+        const stdout = await runYtDlp(['--no-warnings', '--dump-json', `https://www.youtube.com/watch?v=${videoId}`]);
+        const info = JSON.parse(stdout);
+        // Prioritaskan format audio-only untuk miniplayer
+        const audioFormat = info.formats.find(f => f.acodec !== 'none' && f.vcodec === 'none' && (f.ext === 'm4a' || f.ext === 'mp4')) ||
+            info.formats.find(f => f.acodec !== 'none' && f.vcodec === 'none') ||
+            info.formats.find(f => f.acodec !== 'none');
+        return c.json({ stream_url: audioFormat?.url });
+    } catch (e) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
 app.get('/api/download_status/:id', (c) => {
     const id = c.req.param('id');
     const progress = downloadProgress.get(id);

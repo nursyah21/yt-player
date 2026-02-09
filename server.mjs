@@ -4,7 +4,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs-extra';
 import { spawn } from 'child_process';
-import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -218,12 +217,13 @@ async function refreshMetaTask(videoId, metaPath) {
         if (remoteThumb && remoteThumb.startsWith('http')) {
             meta.thumbnail_remote = remoteThumb;
             try {
-                const resp = await axios.get(remoteThumb, { responseType: 'arraybuffer' });
-                if (resp.status === 200) {
+                const resp = await fetch(remoteThumb);
+                if (resp.ok) {
                     const ext = remoteThumb.includes('.webp') ? 'webp' : 'jpg';
                     const localFilename = `${videoId}.${ext}`;
                     const localPath = path.join(THUMB_DIR, localFilename);
-                    await fs.writeFile(localPath, resp.data);
+                    const buffer = Buffer.from(await resp.arrayBuffer());
+                    await fs.writeFile(localPath, buffer);
                     meta.thumbnail = `/offline/thumbnails/${localFilename}`;
                 }
             } catch (e) { }
@@ -271,12 +271,13 @@ async function downloadVideoAndMeta(videoId, videoInfo) {
     const remoteThumb = videoInfo.thumbnail;
     if (remoteThumb && !remoteThumb.startsWith('/offline/')) {
         try {
-            const resp = await axios.get(remoteThumb, { responseType: 'arraybuffer' });
-            if (resp.status === 200) {
+            const resp = await fetch(remoteThumb);
+            if (resp.ok) {
                 const ext = remoteThumb.includes('.webp') ? 'webp' : 'jpg';
                 const localFilename = `${videoId}.${ext}`;
                 const localPath = path.join(THUMB_DIR, localFilename);
-                await fs.writeFile(localPath, resp.data);
+                const buffer = Buffer.from(await resp.arrayBuffer());
+                await fs.writeFile(localPath, buffer);
                 videoInfo.thumbnail = `/offline/thumbnails/${localFilename}`;
             }
         } catch (e) { }

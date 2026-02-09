@@ -12,9 +12,24 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
         fetch(`/cancel_download?video_id=${currentVideoObj.id}`).catch(() => { });
     }
 
+    if (typeof NProgress !== 'undefined') NProgress.start();
+
+    // Determine initial state: respect URL or current isExpanded
+    const urlParams = new URLSearchParams(window.location.search);
+    const forceFull = urlParams.get('screen') === 'full' || urlParams.get('full') === 'true' || isExpanded;
+
+    toggleExpand(forceFull);
+
     $container.show();
     $title.text("Connecting...");
     $uploader.text("Please wait...");
+
+    // Add central loading message in player (spinner only)
+    $('.aspect-video').append(`
+        <div id="videoLoadingOverlay" class="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10 backdrop-blur-sm transition-all duration-300">
+            <div class="w-10 h-10 border-4 border-white/10 border-t-white rounded-full animate-spin"></div>
+        </div>
+    `);
 
     // Update state immediately
     currentVideoObj = video;
@@ -34,7 +49,7 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
     const foundIdx = currentPlaylist.findIndex(v => v.id === video.id);
     if (foundIdx !== -1) currentIndex = foundIdx;
 
-    // 2. PARALLEL FETCHES (NProgress akan otomatis dari Helper.fetchJSON)
+    // 2. PARALLEL FETCHES
     const dataPromise = Helper.fetchJSON(`/get_stream?video_id=${video.id}`);
     saveToHistory(video);
 
@@ -61,6 +76,8 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
     // 4. WAIT FOR FULL DATA
     try {
         const data = await dataPromise;
+        $('#videoLoadingOverlay').addClass('opacity-0');
+        setTimeout(() => $('#videoLoadingOverlay').remove(), 300);
 
         // RACE CONDITION CHECK
         if (!$('#playerContainer').is(':visible') || currentVideoObj.id !== video.id) {
@@ -71,11 +88,17 @@ async function playVideo(video, updateUrl = true, startTime = 0) {
             // Update state with confirmed data from server
             currentVideoObj = { ...video, ...data };
             setupPlyr(data, video, startTime);
-        } else if (!video.is_offline) {
-            Helper.showToast('Gagal memutar video. Silakan coba lagi.', 'error');
+        } else {
+            if (typeof NProgress !== 'undefined') NProgress.done();
+            if (!video.is_offline) {
+                Helper.showToast('Gagal memutar video. Silakan coba lagi.', 'error');
+            }
         }
     } catch (error) {
+        if (typeof NProgress !== 'undefined') NProgress.done();
+        $('#videoLoadingOverlay').remove();
         console.error("Error loading video:", error);
+        Helper.showToast('Terjadi kesalahan koneksi', 'error');
     }
 }
 
@@ -166,6 +189,10 @@ function setupPlyr(data, video, startTime) {
 
     plyrPlayer = new Plyr('#videoPlayer', plyrOpts);
 
+    plyrPlayer.on('ready', () => {
+        if (typeof NProgress !== 'undefined') NProgress.done();
+    });
+
     // Update internal state
     plyrPlayer.source = {
         type: 'video',
@@ -226,20 +253,26 @@ function setupPlyr(data, video, startTime) {
     if (plyrPlayer.duration > 0) doInitialSeek();
 
 
-    // Persistent State (LocalStorage)
+    // Persistent State & Progress Update
     let lastSyncSec = -1;
     plyrPlayer.on('timeupdate', () => {
         const vEl = document.querySelector('video');
-        if (!plyrPlayer.paused && vEl) {
-            const curSec = Math.floor(vEl.currentTime);
-            if (curSec !== lastSyncSec) {
-                // Save exactly what we're watching
-                localStorage.setItem('last_video_state', JSON.stringify({
-                    id: currentVideoObj.id,
-                    time: curSec,
-                    timestamp: Date.now() // to check staleness later if needed
-                }));
-                lastSyncSec = curSec;
+        if (vEl) {
+            // Update Mini Progress Bar at the top of the bar
+            const progress = (vEl.currentTime / vEl.duration) * 100;
+            $('#miniProgressBar').css('width', `${progress}%`);
+
+            if (!plyrPlayer.paused) {
+                const curSec = Math.floor(vEl.currentTime);
+                if (curSec !== lastSyncSec) {
+                    // Save exactly what we're watching
+                    localStorage.setItem('last_video_state', JSON.stringify({
+                        id: currentVideoObj.id,
+                        time: curSec,
+                        timestamp: Date.now()
+                    }));
+                    lastSyncSec = curSec;
+                }
             }
         }
     });
@@ -270,20 +303,7 @@ function updatePlayPauseIcon() {
 }
 
 function toggleMinimize(shouldMin = null) {
-    const $container = $('#playerContainer');
-    const $miniIcon = $('#miniIcon');
-    isMini = (shouldMin !== null) ? shouldMin : !isMini;
-
-    if (isMini) {
-        $container.addClass('mini-view');
-        $miniIcon.attr('class', 'fas fa-external-link-alt');
-        if (isExpanded) toggleExpand(false);
-    } else {
-        $container.removeClass('mini-view');
-        $miniIcon.attr('class', 'fas fa-minus');
-    }
-
-    updateScreenParam();
+    toggleExpand(false); // Map to mini bar
 }
 
 function toggleExpand(shouldExpand = null) {
@@ -292,16 +312,16 @@ function toggleExpand(shouldExpand = null) {
     const $icon = $('#expandIcon');
 
     isExpanded = (shouldExpand !== null) ? shouldExpand : !isExpanded;
+    isMini = !isExpanded;
 
     if (isExpanded) {
-        if (isMini) toggleMinimize(false);
-        $container.addClass('full-view');
+        $container.addClass('full-view').removeClass('mini-view');
         $backdrop.show();
         setTimeout(() => $backdrop.addClass('show'), 10);
         $icon.attr('class', 'fas fa-compress-alt');
         $('body').css('overflow', 'hidden');
     } else {
-        $container.removeClass('full-view');
+        $container.removeClass('full-view').addClass('mini-view');
         $backdrop.removeClass('show');
         setTimeout(() => $backdrop.hide(), 300);
         $icon.attr('class', 'fas fa-expand-alt');
@@ -311,11 +331,18 @@ function toggleExpand(shouldExpand = null) {
     updateScreenParam();
 }
 
+// Alias for compatibility
+window.toggleMinimize = () => toggleExpand(false);
+
 function updateScreenParam() {
     const url = new URL(window.location);
-    if (isExpanded) url.searchParams.set('screen', 'full');
-    else if (isMini) url.searchParams.set('screen', 'min');
-    else url.searchParams.delete('screen');
+    if (isExpanded) {
+        url.searchParams.set('screen', 'full');
+    } else if ($('#playerContainer').is(':visible')) {
+        url.searchParams.set('screen', 'min');
+    } else {
+        url.searchParams.delete('screen');
+    }
 
     // Clean up old 'full' param if exists
     url.searchParams.delete('full');
@@ -326,10 +353,10 @@ function closePlayer() {
     if (currentVideoObj) {
         fetch(`/cancel_download?video_id=${currentVideoObj.id}`).catch(() => { });
     }
+    if (typeof NProgress !== 'undefined') NProgress.done();
     if (plyrPlayer) plyrPlayer.stop();
     $('#playerContainer').hide();
     if (isExpanded) toggleExpand(false);
-    if (isMini) toggleMinimize();
 
     const url = new URL(window.location);
     if (url.searchParams.has('v')) {

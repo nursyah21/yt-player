@@ -112,7 +112,11 @@ async function searchVideos(customQuery = null, displayName = null, updateUrl = 
         const url = new URL(window.location);
         url.searchParams.set('page', 'home');
         url.searchParams.set('q', query);
-        if (displayName) url.searchParams.set('uploader', displayName);
+        if (displayName) {
+            url.searchParams.set('uploader', displayName);
+        } else {
+            url.searchParams.delete('uploader');
+        }
         url.searchParams.delete('p');
         url.searchParams.delete('t'); // Clear timestamp on new search
         window.history.pushState({}, '', url);
@@ -128,11 +132,14 @@ async function searchVideos(customQuery = null, displayName = null, updateUrl = 
 
     try {
         isFetching = true;
+        $('#loading').removeClass('hidden');
+
         if (!query.startsWith('http')) {
             Helper.post('/save_search_history', { query }, { hideProgress: true });
         }
-        // NProgress akan otomatis start dan done dari Helper.post()
+
         const data = await Helper.post('/extract', { query, offset: currentOffset });
+
         if (data?.results) {
             const valid = data.results.filter(v => v.duration && v.duration !== "00:00");
             valid.forEach(v => {
@@ -152,13 +159,13 @@ async function searchVideos(customQuery = null, displayName = null, updateUrl = 
                         uploader: displayName,
                         channel_id: data.found_channel_id
                     }, { hideProgress: true });
-                    console.log("Repairing playlist:", pendingRepairPlaylist, displayName);
                     pendingRepairPlaylist = null;
                 }
             }
         }
     } finally {
         isFetching = false;
+        $('#loading').addClass('hidden');
     }
 }
 

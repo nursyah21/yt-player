@@ -20,19 +20,14 @@
 
 #playerContainer {
     position: fixed;
-    bottom: 24px;
-    right: 24px;
-    width: 400px;
-    background: rgba(15, 15, 15, 0.95);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
     z-index: 1000;
     display: none;
     overflow: hidden;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+    background: rgba(15, 15, 15, 0.95);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
     transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 -10px 50px rgba(0, 0, 0, 0.8);
 }
 
 #playerContainer.full-view {
@@ -42,28 +37,31 @@
     right: auto !important;
     transform: translate(-50%, -50%) !important;
     width: 90vw !important;
-    height: 85vh !important;
-    max-width: 1300px !important;
-    max-height: 800px !important;
-    border-color: rgba(59, 130, 246, 0.3);
+    height: 90vh !important;
+    max-width: 1400px !important;
+    max-height: 850px !important;
+    border: 1px solid rgba(59, 130, 246, 0.3) !important;
     border-radius: 20px !important;
     display: flex !important;
     flex-direction: column;
+    background: #0c0c0c !important;
+    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.9);
 }
 
-/* Mini Bar View (Floating Pill) */
+/* Mini Bar View (Full Width Bottom Bar) */
 #playerContainer.mini-view {
-    bottom: 30px !important;
-    right: 30px !important;
-    width: 420px !important;
-    height: 64px !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    height: 72px !important;
+    top: auto !important;
+    transform: none !important;
     display: flex !important;
     align-items: center;
-    border-radius: 32px !important;
-    padding: 0 12px;
-    background: rgba(25, 25, 25, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6);
+    border-radius: 0 !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0 20px;
 }
 
 #playerContainer.mini-view .player-header {
@@ -100,8 +98,20 @@
 }
 
 #playerContainer.mini-view .player-action-btn {
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
+}
+
+#playerContainer.mini-view #downloadVideoBtn,
+#playerContainer.mini-view [onclick*="openPlaylistSelector"],
+#playerContainer.mini-view #playlistBtn,
+#playerContainer.mini-view .player-header-actions div.bg-white\/10 {
+    display: none !important;
+}
+
+#playerContainer.mini-view .player-header {
+    padding: 0 24px;
+    height: 100%;
 }
 
 
@@ -110,37 +120,35 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 16px;
-    background: rgba(20, 20, 20, 0.5);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(20, 20, 20, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
 }
 
 
 .player-title-info {
     flex: 1;
     min-width: 0;
-    margin-right: 12px;
+    margin-right: 20px;
+    max-width: 65%;
 }
 
 #nowPlayingTitle {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     color: #fff;
     display: block;
     line-height: 1.2;
-}
-
-#nowPlayingUploader {
-    font-size: 10px;
-    color: #888;
-    display: block;
-    margin-top: 2px;
-    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .player-header-actions {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
 }
 
 .player-action-btn {
@@ -222,9 +230,10 @@
 
 @media (max-width: 768px) {
     #playerContainer {
-        width: calc(100vw - 32px);
-        bottom: 16px;
-        right: 16px;
+        width: 100% !important;
+        bottom: 0 !important;
+        right: 0 !important;
+        left: 0 !important;
     }
 
     #playerContainer.full-view {

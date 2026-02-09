@@ -138,20 +138,13 @@ const Helper = {
             info: 'fa-info-circle'
         };
 
-        const titles = {
-            success: title || 'Berhasil',
-            error: title || 'Error',
-            warning: title || 'Peringatan',
-            info: title || 'Info'
-        };
-
         const toast = $(`
-            <div id="${toastId}" class="toast ${type}">
+            <div id="${toastId}" class="toast ${type} ${title ? 'has-title' : ''}">
                 <div class="toast-icon">
                     <i class="fas ${icons[type]}"></i>
                 </div>
                 <div class="toast-content">
-                    <div class="toast-title">${titles[type]}</div>
+                    ${title ? `<div class="toast-title">${title}</div>` : ''}
                     <div class="toast-message">${message}</div>
                 </div>
                 <div class="toast-close">

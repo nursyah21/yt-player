@@ -176,6 +176,8 @@
 
     <div id="playerBackdrop" onclick="toggleExpand()"></div>
     <div id="playerContainer">
+        <div id="miniProgressBar" class="absolute top-0 left-0 h-[2px] bg-blue-600 z-[1001]"
+            style="width: 0%; transition: width 0.1s linear;"></div>
         <div class="player-header">
             <div class="player-title-info">
                 <div class="flex items-center gap-3 w-full">
@@ -206,9 +208,6 @@
                 </button>
                 <button id="playlistBtn" onclick="togglePlaylist()" class="player-action-btn" title="Daftar Putar">
                     <i class="fas fa-list-ul text-xs"></i>
-                </button>
-                <button onclick="toggleMinimize()" class="player-action-btn" title="Kecilkan">
-                    <i id="miniIcon" class="fas fa-minus text-xs"></i>
                 </button>
                 <button onclick="toggleExpand()" class="player-action-btn" title="Besar/Kecil">
                     <i id="expandIcon" class="fas fa-expand-alt text-xs"></i>

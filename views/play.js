@@ -117,17 +117,18 @@ export const Play = (props) => {
 
                 function switchToOffline() {
                     const player = document.getElementById('mainPlayer');
+                    // Jika sudah menggunakan offline, jangan refresh
                     if (player.querySelector('source').src.includes('/offline/')) return;
                     
-                    const currentTime = player.currentTime;
-                    const isPaused = player.paused;
+                    const currentTime = Math.floor(player.currentTime);
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('t', currentTime);
                     
-                    // Cek webm dulu sesuai preferensi baru
-                    player.querySelector('source').src = '/offline/${id}.webm';
-                    player.load();
-                    player.currentTime = currentTime;
-                    if (!isPaused) player.play();
-                    showToast('Beralih ke format WebM (ukuran paling kecil & lancar)', 'success');
+                    showToast('Download selesai! Me-refresh untuk menggunakan versi offline...', 'success');
+                    
+                    setTimeout(() => {
+                        window.location.href = url.toString();
+                    }, 1000);
                 }
 
                 document.addEventListener('DOMContentLoaded', () => {

@@ -23,7 +23,7 @@ if %PORT% leq 8005 goto check_port
 
 :: Jika tidak ada yang jalan, nyalakan server baru
 echo [!] Server belum jalan. Memulai server baru...
-start "YT-Studio-Server" node server.mjs
+start "YT-Studio-Server" node server.js
 echo Menunggu inisialisasi server (3 detik)...
 timeout /t 3 /nobreak > nul
 set PORT=8000

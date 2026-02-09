@@ -35,7 +35,7 @@ const ytQueue = [];
 export const runYtDlp = (args) => new Promise((resolve, reject) => {
     const execute = () => {
         activeProcesses++;
-        const p = spawn('python', ['-m', 'yt_dlp', ...args]);
+        const p = spawn('yt-dlp', args);
         let so = '', se = '';
         p.stdout.on('data', d => so += d.toString());
         p.stderr.on('data', d => se += d.toString());
@@ -45,6 +45,7 @@ export const runYtDlp = (args) => new Promise((resolve, reject) => {
                 const next = ytQueue.shift();
                 if (next) next();
             }
+
             if (code === 0 || (code === 1 && so.trim())) resolve(so);
             else reject(new Error(se || 'yt-dlp failed'));
         });

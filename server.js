@@ -1,8 +1,10 @@
 import { serve } from '@hono/node-server';
+import { createServer } from 'node:https';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import fs from 'fs-extra';
 import path from 'path';
+import os from 'os';
 import { runYtDlp, CACHE_DIR, META_DIR, SUB_DIR, THUMB_DIR, HISTORY_FILE, PLAYLISTS_FILE, SUBSCRIPTIONS_FILE } from './utils.js';
 import { Home } from './views/home.js';
 import { Play } from './views/play.js';
@@ -298,9 +300,45 @@ app.get('/playlists/:name', async (c) => {
     return c.html(PlaylistDetail({ title: name, results, playingVideo, subscriptions }));
 });
 
-console.log(`Server running on http://localhost:${PORT}`);
+// Load SSL Certificates
+const CERT_PATH = path.join(process.cwd(), '.cert');
+const keyPath = path.join(CERT_PATH, 'key.pem');
+const certPath = path.join(CERT_PATH, 'cert.pem');
+
+let serverOptions = {};
+let protocol = 'http';
+
+if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    try {
+        serverOptions = {
+            key: fs.readFileSync(keyPath),
+            cert: fs.readFileSync(certPath),
+        };
+        protocol = 'https';
+    } catch (err) {
+        console.error('❌ Failed to load SSL certificates:', err);
+    }
+}
+
+function getLocalIp() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+        }
+    }
+    return '127.0.0.1';
+}
+
+const localIp = getLocalIp();
+
+console.log(`\n🚀 Server is ready!`);
+console.log(`- Local:   ${protocol}://localhost:${PORT}`);
+console.log(`- Network: ${protocol}://${localIp}:${PORT}\n`);
 
 serve({
     fetch: app.fetch,
-    port: PORT
+    port: PORT,
+    createServer: protocol === 'https' ? createServer : undefined,
+    serverOptions
 });
